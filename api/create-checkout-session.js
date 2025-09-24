@@ -23,14 +23,12 @@ export default async function handler(req, res) {
 
     // Example checkout session payload — adjust as needed
     const body = {
-      amount: 10,
+      amount: 19.99,
       currency: "USD",
-      country: "US",
-      payment_method_types: ["applepay"],
+      country: "DE",
       // Add your additional parameters here as per Rapyd docs
-      complete_payment_url: "https://your-frontend.com/success",
-      cancel_payment_url: "https://your-frontend.com/cancel",
-      metadata: { integration_check: "apple_pay" },
+      complete_payment_url: "http://example.com/success",
+      cancel_payment_url: "http://example.com/cancel",
     };
 
     const salt = crypto.randomBytes(6).toString("hex");
