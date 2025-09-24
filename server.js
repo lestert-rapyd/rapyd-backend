@@ -2,33 +2,32 @@ const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const cors = require('cors');
-
 require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 
-// CORS configuration: allow only your frontend origin
-const allowedOrigins = ['https://rapydtoolkit.com'];
+// Replace with your frontend URL (where fetch is coming from)
+const allowedOrigins = ['https://rapydtoolkit.com', 'http://localhost:3000'];
 
+// CORS middleware with allowed origins
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (e.g., Postman, curl)
+    // Allow requests with no origin like Postman or curl
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+      return callback(new Error('Not allowed by CORS'), false);
     }
     return callback(null, true);
   }
 }));
 
-// RAPYD CONFIG - Put your own keys in .env file
+// RAPYD CONFIG (put your keys in .env)
 const ACCESS_KEY = process.env.RAPYD_ACCESS_KEY;
 const SECRET_KEY = process.env.RAPYD_SECRET_KEY;
-const RAPYD_BASE_URL = 'https://sandboxapi.rapyd.net'; // Use live URL in production
+const RAPYD_BASE_URL = 'https://sandboxapi.rapyd.net';
 
-// Helper: Generate Rapyd HMAC signature
+// Helper function to generate signature
 function generateSignature(httpMethod, urlPath, salt, timestamp, body, secretKey) {
   const bodyString = body ? JSON.stringify(body) : '';
   const toSign = `${httpMethod}${urlPath}${salt}${timestamp}${ACCESS_KEY}${SECRET_KEY}${bodyString}`;
@@ -42,12 +41,49 @@ function getAuthHeaders(httpMethod, urlPath, body = null) {
 
   return {
     access_key: ACCESS_KEY,
-    salt: salt,
-    timestamp: timestamp,
-    signature: signature,
+    salt,
+    timestamp,
+    signature,
     'Content-Type': 'application/json',
   };
 }
+
+// Endpoint: Create Hosted Checkout Session
+app.post('/api/create-checkout-session', async (req, res) => {
+  try {
+    const { amount, currency, description } = req.body;
+
+    const urlPath = '/v1/checkout';
+    const url = RAPYD_BASE_URL + urlPath;
+
+    const body = {
+      amount: parseFloat(amount).toFixed(2),
+      currency,
+      country: 'DE', // adjust if needed
+      language: 'en',
+      complete_checkout_url: 'https://example.com/success',
+      error_checkout_url: 'https://example.com/error',
+      checkout_reference_id: 'order_12345',
+      metadata: { description },
+    };
+
+    const headers = getAuthHeaders('POST', urlPath, body);
+
+    const response = await axios.post(url, body, { headers });
+
+    if (response.data && response.data.data) {
+      res.json({
+        redirect_url: response.data.data.redirect_url,
+        checkout_id: response.data.data.id,
+      });
+    } else {
+      res.status(500).json({ error: 'No data returned from Rapyd' });
+    }
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    res.status(500).json({ error: 'Checkout session creation failed', details: error.response?.data || error.message });
+  }
+});
 
 // Endpoint: Create Direct Card Payment
 app.post('/api/create-direct-payment', async (req, res) => {
@@ -85,43 +121,6 @@ app.post('/api/create-direct-payment', async (req, res) => {
   } catch (error) {
     console.error(error.response?.data || error.message);
     res.status(500).json({ error: 'Payment failed', details: error.response?.data || error.message });
-  }
-});
-
-// Endpoint: Create Hosted Checkout Session
-app.post('/api/create-checkout-session', async (req, res) => {
-  try {
-    const { amount, currency, description } = req.body;
-
-    const urlPath = '/v1/checkout';
-    const url = RAPYD_BASE_URL + urlPath;
-
-    const body = {
-      amount: parseFloat(amount).toFixed(2),
-      currency,
-      country: 'DE', // adjust if needed
-      language: 'en',
-      complete_checkout_url: 'https://example.com/success',
-      error_checkout_url: 'https://example.com/error',
-      checkout_reference_id: 'order_12345',
-      metadata: { description },
-    };
-
-    const headers = getAuthHeaders('POST', urlPath, body);
-
-    const response = await axios.post(url, body, { headers });
-
-    if (response.data && response.data.data) {
-      res.json({
-        redirect_url: response.data.data.redirect_url,
-        checkout_id: response.data.data.id,
-      });
-    } else {
-      res.status(500).json({ error: 'No data returned from Rapyd' });
-    }
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).json({ error: 'Checkout session creation failed', details: error.response?.data || error.message });
   }
 });
 
