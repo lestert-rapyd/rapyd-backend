@@ -1,4 +1,4 @@
-3const express = require('express');
+const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -85,7 +85,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const body = {
       amount: parseFloat(amount).toFixed(2),
       currency,
-      country: 'DE',
+      country: 'DE', // adjust if needed
       language: 'en',
       complete_checkout_url: 'https://example.com/success',
       error_checkout_url: 'https://example.com/error',
@@ -97,10 +97,13 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
     const response = await axios.post(url, body, { headers });
 
-    if (response.data && response.data.data && response.data.data.redirect_url) {
-      res.json({ redirect_url: response.data.data.redirect_url });
+    if (response.data && response.data.data) {
+      res.json({
+        redirect_url: response.data.data.redirect_url,
+        checkout_id: response.data.data.id,  // <-- add this line
+      });
     } else {
-      res.status(500).json({ error: 'No redirect URL returned from Rapyd' });
+      res.status(500).json({ error: 'No data returned from Rapyd' });
     }
   } catch (error) {
     console.error(error.response?.data || error.message);
