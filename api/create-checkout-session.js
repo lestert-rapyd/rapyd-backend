@@ -24,11 +24,14 @@ export default async function handler(req, res) {
     // Example checkout session payload — adjust as needed
     const body = {
       amount: 19.99,
+      capture: true,
       currency: "USD",
       country: "DE",
       // Add your additional parameters here as per Rapyd docs
       complete_payment_url: "http://example.com/success",
       cancel_payment_url: "http://example.com/cancel",
+      complete_checkout_url: "http://example.com/complete",
+      cancel_checkout_url: "http://example.com/cancel_checkout"
     };
 
     const salt = crypto.randomBytes(6).toString("hex");
