@@ -12,7 +12,7 @@ app.use(cors());
 // RAPYD CONFIG - Put your own keys in .env file
 const ACCESS_KEY = process.env.RAPYD_ACCESS_KEY;
 const SECRET_KEY = process.env.RAPYD_SECRET_KEY;
-const RAPYD_BASE_URL = 'https://sandboxapi.rapyd.net'; // or live url in prod
+const RAPYD_BASE_URL = 'https://sandboxapi.rapyd.net'; // Use live URL in production
 
 // Helper: Generate Rapyd HMAC signature
 function generateSignature(httpMethod, urlPath, salt, timestamp, body, secretKey) {
@@ -27,35 +27,33 @@ function getAuthHeaders(httpMethod, urlPath, body = null) {
   const signature = generateSignature(httpMethod, urlPath, salt, timestamp, body, SECRET_KEY);
 
   return {
-    'access_key': ACCESS_KEY,
-    'salt': salt,
-    'timestamp': timestamp,
-    'signature': signature,
+    access_key: ACCESS_KEY,
+    salt: salt,
+    timestamp: timestamp,
+    signature: signature,
     'Content-Type': 'application/json',
   };
 }
 
-// Endpoint: Create Direct Card Payment (/v1/payments)
-app.post('/create-direct-payment', async (req, res) => {
+// Endpoint: Create Direct Card Payment (/api/create-direct-payment)
+app.post('/api/create-direct-payment', async (req, res) => {
   try {
-    const { amount, currency, description } = req.body;
+    const { amount, currency, description, card } = req.body;
 
     const urlPath = '/v1/payments';
     const url = RAPYD_BASE_URL + urlPath;
 
-    // For demo: a minimal payment request; you'd collect real card info from your frontend securely
-    // This example assumes a card tokenized payment (replace with real token)
     const body = {
-      amount: amount.toFixed(2),
+      amount: parseFloat(amount).toFixed(2),
       currency,
       payment_method: {
-        type: 'us_debit_visa_card',
+        type: 'us_debit_visa_card', // or other card types as needed
         fields: {
-          number: '4111111111111111',
-          expiration_month: '12',
-          expiration_year: '2025',
-          cvv: '123',
-          name: 'Test Card',
+          number: card.number,
+          expiration_month: card.expiration_month,
+          expiration_year: card.expiration_year,
+          cvv: card.cvv,
+          name: card.name,
         },
       },
       capture: true,
@@ -76,8 +74,8 @@ app.post('/create-direct-payment', async (req, res) => {
   }
 });
 
-// Endpoint: Create Hosted Checkout Session (/v1/checkout)
-app.post('/create-checkout-session', async (req, res) => {
+// Endpoint: Create Hosted Checkout Session (/api/create-checkout-session)
+app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const { amount, currency, description } = req.body;
 
@@ -85,15 +83,14 @@ app.post('/create-checkout-session', async (req, res) => {
     const url = RAPYD_BASE_URL + urlPath;
 
     const body = {
-      amount: amount.toFixed(2),
+      amount: parseFloat(amount).toFixed(2),
       currency,
       country: 'US',  // Adjust as needed
       language: 'en',
-      complete_checkout_url: 'https://your-domain.com/success',  // Replace with your success URL
-      error_checkout_url: 'https://your-domain.com/error',       // Replace with your error URL
-      checkout_reference_id: 'order_12345',                       // Your internal order id
+      complete_checkout_url: 'https://your-frontend-domain.com/success',  // Replace with your frontend success URL
+      error_checkout_url: 'https://your-frontend-domain.com/error',       // Replace with your frontend error URL
+      checkout_reference_id: 'order_12345',                               // Replace with your order ID or generate dynamically
       metadata: { description },
-      // You can add more options here, like billing, shipping, etc.
     };
 
     const headers = getAuthHeaders('POST', urlPath, body);
