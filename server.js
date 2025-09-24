@@ -7,7 +7,21 @@ require('dotenv').config();
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+
+// CORS configuration: allow only your frontend origin
+const allowedOrigins = ['https://rapydtoolkit.com'];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (e.g., Postman, curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  }
+}));
 
 // RAPYD CONFIG - Put your own keys in .env file
 const ACCESS_KEY = process.env.RAPYD_ACCESS_KEY;
@@ -35,7 +49,7 @@ function getAuthHeaders(httpMethod, urlPath, body = null) {
   };
 }
 
-// Endpoint: Create Direct Card Payment (/api/create-direct-payment)
+// Endpoint: Create Direct Card Payment
 app.post('/api/create-direct-payment', async (req, res) => {
   try {
     const { amount, currency, description, card } = req.body;
@@ -74,7 +88,7 @@ app.post('/api/create-direct-payment', async (req, res) => {
   }
 });
 
-// Endpoint: Create Hosted Checkout Session (/api/create-checkout-session)
+// Endpoint: Create Hosted Checkout Session
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const { amount, currency, description } = req.body;
@@ -100,7 +114,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     if (response.data && response.data.data) {
       res.json({
         redirect_url: response.data.data.redirect_url,
-        checkout_id: response.data.data.id,  // <-- add this line
+        checkout_id: response.data.data.id,
       });
     } else {
       res.status(500).json({ error: 'No data returned from Rapyd' });
