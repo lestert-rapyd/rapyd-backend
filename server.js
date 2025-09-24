@@ -47,7 +47,7 @@ app.post('/api/create-direct-payment', async (req, res) => {
       amount: parseFloat(amount).toFixed(2),
       currency,
       payment_method: {
-        type: 'us_debit_visa_card', // or other card types as needed
+        type: 'de_visa_card', // or other card types as needed
         fields: {
           number: card.number,
           expiration_month: card.expiration_month,
@@ -85,11 +85,11 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const body = {
       amount: parseFloat(amount).toFixed(2),
       currency,
-      country: 'US',  // Adjust as needed
+      country: 'DE',
       language: 'en',
-      complete_checkout_url: 'https://your-frontend-domain.com/success',  // Replace with your frontend success URL
-      error_checkout_url: 'https://your-frontend-domain.com/error',       // Replace with your frontend error URL
-      checkout_reference_id: 'order_12345',                               // Replace with your order ID or generate dynamically
+      complete_checkout_url: 'https://example.com/success',
+      error_checkout_url: 'https://example.com/error',
+      checkout_reference_id: 'order_12345',
       metadata: { description },
     };
 
