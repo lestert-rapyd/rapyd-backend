@@ -1,4 +1,4 @@
-const express = require('express');
+econst express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -59,7 +59,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const body = {
       amount: parseFloat(amount).toFixed(2),
       currency,
-      country: 'DE', // adjust if needed
+      country: 'DE',
       language: 'en',
       complete_checkout_url: 'https://example.com/success',
       error_checkout_url: 'https://example.com/error',
