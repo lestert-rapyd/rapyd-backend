@@ -1,4 +1,4 @@
-const express = require('express');
+3const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -47,7 +47,7 @@ app.post('/api/create-direct-payment', async (req, res) => {
       amount: parseFloat(amount).toFixed(2),
       currency,
       payment_method: {
-        type: 'de_visa_card', // or other card types as needed
+        type: 'de_visa_card',
         fields: {
           number: card.number,
           expiration_month: card.expiration_month,
