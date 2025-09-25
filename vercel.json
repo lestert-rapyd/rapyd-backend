@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/create-checkout-session", "dest": "/api/create-checkout-session.js" },
+    { "src": "/api/create-direct-payment", "dest": "/api/create-direct-payment.js" }
+  ]
+}
