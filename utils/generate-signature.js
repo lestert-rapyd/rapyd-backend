@@ -15,28 +15,18 @@ function generateRapydSignature(httpMethod, urlPath, body = null) {
     throw new Error('Missing Rapyd access key or secret key in environment');
   }
 
-  const salt = crypto.randomBytes(8).toString('hex'); // 8 bytes → hex string ~16 chars
-  const timestamp = Math.floor(Date.now() / 1000).toString(); // as string
+  const salt = crypto.randomBytes(8).toString('hex');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
 
-  let bodyString = '';
-  if (body != null) {
-    // JSON.stringify with no extra spaces
-    bodyString = JSON.stringify(body, Object.keys(body).sort(), /* but key order not required by Rapyd unless your code depends on it */);
-    // Remove whitespace etc. JSON.stringify by default already uses minimal separators.
-  }
-
-  // must be lower-case method
   const method = httpMethod.toLowerCase();
+  const bodyString = body ? JSON.stringify(body) : '';
 
   const toSign = method + urlPath + salt + timestamp + accessKey + secretKey + bodyString;
 
-  // HMAC SHA‑256
-  const hmac = crypto.createHmac('sha256', secretKey);
-  hmac.update(toSign);
-  const hashHex = hmac.digest('hex');
-
-  // base64 encode the hash hex string (Rapyd uses base64 of hex digest, not directly base64 of raw HMAC bytes)  
-  const signature = Buffer.from(hashHex, 'utf8').toString('base64');
+  const signature = crypto
+    .createHmac('sha256', secretKey)
+    .update(toSign)
+    .digest('base64');
 
   return { salt, timestamp, signature, bodyString };
 }
