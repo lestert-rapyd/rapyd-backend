@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { generateRapydSignature } from '.utils/generate-signature.js';  // adjust path as needed
+import { generateRapydSignature } from '../utils/generate-signature.js';  // adjust path as needed
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
