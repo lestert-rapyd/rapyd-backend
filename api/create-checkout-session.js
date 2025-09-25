@@ -37,12 +37,12 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log("Rapyd response data:", rapydRes.data);
+
     res.setHeader("Access-Control-Allow-Origin", "*");
-    return res.status(200).json(rapydRes.data.data);
+    return res.status(200).json(rapydRes.data);
   } catch (err) {
     console.error("Error calling Rapyd /v1/checkout:", err.response?.data || err.message);
-
-    // Return full Rapyd error details back to frontend
     const errorData = err.response?.data || { message: err.message };
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(500).json({ error: errorData });
