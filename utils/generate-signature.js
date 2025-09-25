@@ -15,16 +15,16 @@ export function generateRapydSignature(method, urlPath, body = null) {
     throw new Error('Missing RAPYD_ACCESS_KEY or RAPYD_SECRET_KEY in environment variables');
   }
 
-  const salt = crypto.randomBytes(8).toString('hex');   // 16 hex chars
+  const salt = crypto.randomBytes(8).toString('hex'); // 16 hex chars
   const timestamp = Math.floor(Date.now() / 1000).toString(); // unix timestamp in seconds as string
 
   const bodyString = body ? JSON.stringify(body) : '';
 
-  // Construct the string to sign exactly in this order:
+  // Construct the string to sign in this order:
   // method + urlPath + salt + timestamp + access_key + bodyString + secret_key
   const toSign = method.toLowerCase() + urlPath + salt + timestamp + access_key + bodyString + secret_key;
 
-  // Create HMAC-SHA256 hash and encode the raw bytes output as base64 (NOT hex then base64!)
+  // Create HMAC-SHA256 hash and encode the raw bytes digest as base64
   const hmac = crypto.createHmac('sha256', secret_key);
   hmac.update(toSign);
   const signature = hmac.digest('base64');
