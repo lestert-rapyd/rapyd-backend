@@ -15,28 +15,27 @@ export function generateRapydSignature(httpMethod, urlPath, body = null) {
     throw new Error('Missing Rapyd access key or secret key in environment variables');
   }
 
-  // Generate a random salt: 8 bytes → 16 hex chars
+  // Generate random salt (8 bytes hex string)
   const salt = crypto.randomBytes(8).toString('hex');
 
   // Current Unix timestamp (seconds)
   const timestamp = Math.floor(Date.now() / 1000).toString();
 
-  // Lowercase HTTP method
+  // Lowercase HTTP method as per Rapyd spec
   const method = httpMethod.toLowerCase();
 
-  // JSON stringify body without spaces if present
+  // JSON stringify body if present, else empty string
   const bodyString = body ? JSON.stringify(body) : '';
 
-  // String to sign:
-  // method + urlPath + salt + timestamp + accessKey + secretKey + bodyString
+  // Construct string to sign
   const toSign = method + urlPath + salt + timestamp + accessKey + secretKey + bodyString;
 
-  // Calculate HMAC SHA256 digest (hex)
+  // Create HMAC SHA256 hash (hex digest)
   const hmac = crypto.createHmac('sha256', secretKey);
   hmac.update(toSign);
-  const hashHex = hmac.digest('hex'); // hex string (64 chars)
+  const hashHex = hmac.digest('hex'); // hex string
 
-  // Base64 encode the raw bytes of the hex digest (convert hex → bytes → base64)
+  // Base64 encode the *raw bytes* represented by the hex string
   const signature = Buffer.from(hashHex, 'hex').toString('base64');
 
   return { salt, timestamp, signature, bodyString };
