@@ -47,8 +47,8 @@ export function generateRapydSignature(method, urlPath, body = null) {
   const signature = Buffer.from(signatureHex)
     .toString('base64')
     .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .replace(/\//g, '_');
+    // .replace(/=+$/, '');
 
   return { salt, timestamp, signature };
 }
