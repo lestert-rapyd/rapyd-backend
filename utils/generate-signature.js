@@ -1,38 +1,33 @@
 import crypto from 'crypto';
 
-export function generateRapydSignature(method, urlPath, body = '') {
-  const accessKey = process.env.RAPYD_ACCESS_KEY;
-  const secretKey = process.env.RAPYD_SECRET_KEY;
+/**
+ * Generate Rapyd REST API signature
+ * @param {string} method     - HTTP method (lowercase recommended)
+ * @param {string} urlPath    - URL path starting with /v1/..., including query string if any
+ * @param {Object|null} body  - JSON payload object or null for GET requests
+ * @returns {Object}          - { salt, timestamp, signature }
+ */
+export function generateRapydSignature(method, urlPath, body = null) {
+  const access_key = process.env.RAPYD_ACCESS_KEY;
+  const secret_key = process.env.RAPYD_SECRET_KEY;
 
-  if (!accessKey || !secretKey) {
-    throw new Error('Missing RAPYD_ACCESS_KEY or RAPYD_SECRET_KEY in environment');
+  if (!access_key || !secret_key) {
+    throw new Error('Missing RAPYD_ACCESS_KEY or RAPYD_SECRET_KEY in environment variables');
   }
 
-  const salt = crypto.randomBytes(8).toString('hex');  // 16 hex chars
-  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const salt = crypto.randomBytes(8).toString('hex');   // 16 hex chars
+  const timestamp = Math.floor(Date.now() / 1000).toString(); // unix timestamp in seconds as string
 
-  const bodyString = body && typeof body === 'object' ? JSON.stringify(body) : (body || '');
+  const bodyString = body ? JSON.stringify(body) : '';
 
-  const methodLower = method.toLowerCase();
+  // Construct the string to sign exactly in this order:
+  // method + urlPath + salt + timestamp + access_key + bodyString + secret_key
+  const toSign = method.toLowerCase() + urlPath + salt + timestamp + access_key + bodyString + secret_key;
 
-  const toSign = methodLower + urlPath + salt + timestamp + accessKey + bodyString + secretKey;
-
-  console.log('--- Rapyd Signature Debug ---');
-  console.log('String to sign:', toSign);
-  console.log('Method:', methodLower);
-  console.log('URL Path:', urlPath);
-  console.log('Salt:', salt);
-  console.log('Timestamp:', timestamp);
-  console.log('Access Key:', accessKey);
-  console.log('Body string:', bodyString);
-  console.log('Secret Key:', secretKey);
-
-  const hmac = crypto.createHmac('sha256', secretKey);
+  // Create HMAC-SHA256 hash and encode the raw bytes output as base64 (NOT hex then base64!)
+  const hmac = crypto.createHmac('sha256', secret_key);
   hmac.update(toSign);
   const signature = hmac.digest('base64');
-
-  console.log('Signature:', signature);
-  console.log('------------------------------');
 
   return { salt, timestamp, signature };
 }
