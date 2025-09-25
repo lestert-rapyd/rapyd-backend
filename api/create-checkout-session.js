@@ -1,5 +1,3 @@
-// api/create-checkout-session.js
-
 import axios from "axios";
 import crypto from "crypto";
 
@@ -15,19 +13,26 @@ function generateRapydSignature(method, urlPath, body) {
 }
 
 export default async function handler(req, res) {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     return res.status(200).end();
   }
+
+  // Only accept POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
     const body = req.body;
+
+    // Generate signature for Rapyd /v1/checkout endpoint
     const { salt, timestamp, signature } = generateRapydSignature("post", "/v1/checkout", body);
+
+    // Call Rapyd API
     const rapydRes = await axios.post("https://sandboxapi.rapyd.net/v1/checkout", body, {
       headers: {
         "Content-Type": "application/json",
@@ -35,12 +40,17 @@ export default async function handler(req, res) {
         salt,
         timestamp,
         signature,
-      }
+      },
     });
+
+    // Allow CORS for frontend requests
     res.setHeader("Access-Control-Allow-Origin", "*");
+
+    // Send back Rapyd response data (checkout_id, redirect_url, etc)
     return res.status(200).json(rapydRes.data.data);
   } catch (err) {
     console.error("Error calling Rapyd /v1/checkout:", err.response?.data || err.message);
-    return res.status(500).json({ error: "Internal error" });
+    // Return error details for debugging (remove in production for security)
+    return res.status(500).json({ error: err.response?.data || err.message });
   }
 }
