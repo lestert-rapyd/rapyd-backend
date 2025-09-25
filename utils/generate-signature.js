@@ -1,69 +1,43 @@
 import crypto from 'crypto';
-import axios from 'axios';
 
 /**
  * Generate Rapyd REST request signature
- * @param {string} httpMethod  – e.g. 'get', 'post', 'put', 'delete' (lower‑case)
+ * @param {string} httpMethod  – e.g. 'get', 'post', 'put', 'delete' (case-insensitive)
  * @param {string} urlPath     – including '/v1...' and query string if present
- * @param {Object|null} body   – JavaScript object for JSON payload, or null/undefined for GET/etc
+ * @param {Object|null} body   – JavaScript object for JSON payload, or null for GET/etc
  * @returns {Object}           – { salt, timestamp, signature, bodyString }
  */
-function generateRapydSignature(httpMethod, urlPath, body = null) {
+export function generateRapydSignature(httpMethod, urlPath, body = null) {
   const accessKey = process.env.RAPYD_ACCESS_KEY;
   const secretKey = process.env.RAPYD_SECRET_KEY;
+
   if (!accessKey || !secretKey) {
-    throw new Error('Missing Rapyd access key or secret key in environment');
+    throw new Error('Missing Rapyd access key or secret key in environment variables');
   }
 
+  // Generate a random salt: 8 bytes → 16 hex chars
   const salt = crypto.randomBytes(8).toString('hex');
+
+  // Current Unix timestamp (seconds)
   const timestamp = Math.floor(Date.now() / 1000).toString();
 
+  // Lowercase HTTP method
   const method = httpMethod.toLowerCase();
+
+  // JSON stringify body without spaces if present
   const bodyString = body ? JSON.stringify(body) : '';
 
+  // String to sign:
+  // method + urlPath + salt + timestamp + accessKey + secretKey + bodyString
   const toSign = method + urlPath + salt + timestamp + accessKey + secretKey + bodyString;
 
-  const signature = crypto
-    .createHmac('sha256', secretKey)
-    .update(toSign)
-    .digest('base64');
+  // Calculate HMAC SHA256 digest (hex)
+  const hmac = crypto.createHmac('sha256', secretKey);
+  hmac.update(toSign);
+  const hashHex = hmac.digest('hex'); // hex string (64 chars)
+
+  // Base64 encode the raw bytes of the hex digest (convert hex → bytes → base64)
+  const signature = Buffer.from(hashHex, 'hex').toString('base64');
 
   return { salt, timestamp, signature, bodyString };
-}
-
-/**
- * Make a signed Rapyd API request using axios
- * @param {string} method       – HTTP method (lower‑case or any, will be converted)
- * @param {string} path         – path after host, including /v1... and query
- * @param {Object|null} body    – JSON payload or null
- * @param {string} baseUrl      – e.g. 'https://sandboxapi.rapyd.net'
- * @returns {Promise<Object>}    – parsed JSON response
- */
-async function rapydRequest(method, path, body = null, baseUrl = 'https://sandboxapi.rapyd.net') {
-  const { salt, timestamp, signature, bodyString } = generateRapydSignature(method, path, body);
-
-  const headers = {
-    'access_key': process.env.RAPYD_ACCESS_KEY,
-    'salt': salt,
-    'timestamp': timestamp,
-    'signature': signature,
-    'Content-Type': 'application/json',
-    // idempotency is optional depending on endpoint; many examples include it:
-    'idempotency': timestamp + salt
-  };
-
-  const url = baseUrl + path;
-
-  const axiosConfig = {
-    method, 
-    url,
-    headers,
-  };
-
-  if (body != null && !['get', 'delete'].includes(method.toLowerCase())) {
-    axiosConfig.data = bodyString;
-  }
-
-  const resp = await axios(axiosConfig);
-  return resp.data;
 }
