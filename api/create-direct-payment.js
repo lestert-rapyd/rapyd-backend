@@ -10,12 +10,26 @@ router.post('/', async (req, res) => {
     currency,
     description,
     capture = true,
-    card
+    card,
+    env = 'sandbox' // default to sandbox
   } = req.body;
 
-  // Basic validation (you can extend this)
+  // Validate card fields
   if (!amount || !currency || !card || !card.number || !card.expiration_month || !card.expiration_year || !card.cvv || !card.name) {
     return res.status(400).json({ error: 'Missing required payment or card fields' });
+  }
+
+  // Pick the correct credentials
+  const accessKey = env === 'live'
+    ? process.env.RAPYD_LIVE_ACCESS_KEY
+    : process.env.RAPYD_SANDBOX_ACCESS_KEY;
+
+  const secretKey = env === 'live'
+    ? process.env.RAPYD_LIVE_SECRET_KEY
+    : process.env.RAPYD_SANDBOX_SECRET_KEY;
+
+  if (!accessKey || !secretKey) {
+    return res.status(500).json({ error: `Missing API keys for ${env} environment` });
   }
 
   const paymentBody = {
@@ -35,20 +49,27 @@ router.post('/', async (req, res) => {
     }
   };
 
+  // Generate signature with dynamic credentials
   const { salt, timestamp, signature } = generateRapydSignature(
     'post',
     '/v1/payments',
-    paymentBody
+    paymentBody,
+    accessKey,
+    secretKey
   );
+
+  const baseURL = env === 'live'
+    ? 'https://api.rapyd.net'
+    : 'https://sandboxapi.rapyd.net';
 
   try {
     const response = await axios.post(
-      'https://sandboxapi.rapyd.net/v1/payments',
+      `${baseURL}/v1/payments`,
       paymentBody,
       {
         headers: {
           'Content-Type': 'application/json',
-          access_key: process.env.RAPYD_ACCESS_KEY,
+          access_key: accessKey,
           salt,
           timestamp,
           signature
@@ -56,11 +77,13 @@ router.post('/', async (req, res) => {
       }
     );
 
-    // Return full data to frontend for better handling
     res.status(200).json(response.data);
   } catch (err) {
     console.error('Rapyd error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Payment failed', details: err.response?.data || err.message });
+    res.status(500).json({
+      error: 'Payment failed',
+      details: err.response?.data || err.message
+    });
   }
 });
 
