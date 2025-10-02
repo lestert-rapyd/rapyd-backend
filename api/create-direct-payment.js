@@ -1,90 +1,81 @@
-import express from 'express';
 import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js';
+import { generateRapydSignature } from '../utils/generate-signature.js'; // Adjust path if needed
 
-const router = express.Router();
-
-router.post('/', async (req, res) => {
-  const {
-    amount,
-    currency,
-    description,
-    capture = true,
-    card,
-    env = 'sandbox' // default to sandbox
-  } = req.body;
-
-  // Validate card fields
-  if (!amount || !currency || !card || !card.number || !card.expiration_month || !card.expiration_year || !card.cvv || !card.name) {
-    return res.status(400).json({ error: 'Missing required payment or card fields' });
+export default async function handler(req, res) {
+  // CORS preflight support
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
   }
 
-  // Pick the correct credentials
-  const accessKey = env === 'live'
-    ? process.env.RAPYD_LIVE_ACCESS_KEY
-    : process.env.RAPYD_SANDBOX_ACCESS_KEY;
-
-  const secretKey = env === 'live'
-    ? process.env.RAPYD_LIVE_SECRET_KEY
-    : process.env.RAPYD_SANDBOX_SECRET_KEY;
-
-  if (!accessKey || !secretKey) {
-    return res.status(500).json({ error: `Missing API keys for ${env} environment` });
+  if (req.method !== 'POST') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(405).json({ error: 'Method not allowed' });
   }
-
-  const paymentBody = {
-    amount,
-    currency,
-    description,
-    capture,
-    payment_method: {
-      type: 'de_visa_card',
-      fields: {
-        name: card.name,
-        number: card.number,
-        expiration_month: card.expiration_month,
-        expiration_year: card.expiration_year,
-        cvv: card.cvv
-      }
-    }
-  };
-
-  // Generate signature with dynamic credentials
-  const { salt, timestamp, signature } = generateRapydSignature(
-    'post',
-    '/v1/payments',
-    paymentBody,
-    accessKey,
-    secretKey
-  );
-
-  const baseURL = env === 'live'
-    ? 'https://api.rapyd.net'
-    : 'https://sandboxapi.rapyd.net';
 
   try {
-    const response = await axios.post(
-      `${baseURL}/v1/payments`,
-      paymentBody,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          access_key: accessKey,
-          salt,
-          timestamp,
-          signature
-        }
-      }
+    const body = req.body;
+    const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
+
+    // Pick environment-specific keys
+    const accessKey = env === 'live'
+      ? process.env.RAPYD_LIVE_ACCESS_KEY
+      : process.env.RAPYD_SANDBOX_ACCESS_KEY;
+
+    const secretKey = env === 'live'
+      ? process.env.RAPYD_LIVE_SECRET_KEY
+      : process.env.RAPYD_SANDBOX_SECRET_KEY;
+
+    // Validation
+    if (!accessKey || !secretKey) {
+      console.error('Missing Rapyd keys for environment:', env);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.status(500).json({ error: `Missing API keys for ${env} environment` });
+    }
+
+    // Generate Rapyd signature
+    const { salt, timestamp, signature } = generateRapydSignature(
+      'post',
+      '/v1/payments',
+      body,
+      accessKey,
+      secretKey
     );
 
-    res.status(200).json(response.data);
-  } catch (err) {
-    console.error('Rapyd error:', err.response?.data || err.message);
-    res.status(500).json({
-      error: 'Payment failed',
-      details: err.response?.data || err.message
-    });
-  }
-});
+    const headers = {
+      'Content-Type': 'application/json',
+      access_key: accessKey,
+      salt,
+      timestamp,
+      signature,
+      idempotency: timestamp + salt,
+    };
 
-export default router;
+    const baseURL = env === 'live'
+      ? 'https://api.rapyd.net'
+      : 'https://sandboxapi.rapyd.net';
+
+    const rapydRes = await axios.post(`${baseURL}/v1/payments`, body, {
+      headers,
+      timeout: 10000,
+    });
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(200).json(rapydRes.data);
+
+  } catch (err) {
+    console.error('Error calling Rapyd /v1/payments:', err);
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    if (err.response) {
+      return res.status(err.response.status || 500).json({
+        error: err.response.data || 'Unknown error',
+      });
+    } else {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+}
