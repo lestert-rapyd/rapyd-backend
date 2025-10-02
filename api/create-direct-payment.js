@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { generateRapydSignature } from '../utils/generate-signature.js'; // Adjust path if needed
+import { mapRapydError } from '../utils/map-rapyd-error.js';
 
 export default async function handler(req, res) {
   // CORS preflight support
@@ -66,16 +67,16 @@ export default async function handler(req, res) {
     return res.status(200).json(rapydRes.data);
 
   } catch (err) {
-    console.error('Error calling Rapyd /v1/payments:', err);
+  const errorData = err.response?.data || {};
+  const rapydStatus = errorData.status || {};
+  const mappedError = mapRapydError(rapydStatus.error_code);
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
 
-    if (err.response) {
-      return res.status(err.response.status || 500).json({
-        error: err.response.data || 'Unknown error',
-      });
-    } else {
-      return res.status(500).json({ error: err.message });
-    }
-  }
+  return res.status(400).json({
+    error: mappedError.code,
+    message: mappedError.message,
+    hint: mappedError.hint,
+    raw: rapydStatus  // Optional: include this for debugging
+  });
 }
