@@ -38,7 +38,7 @@ router.post('/', async (req, res) => {
     description,
     capture,
     payment_method: {
-      type: 'card',
+      type: 'de_visa_card',
       fields: {
         name: card.name,
         number: card.number,
