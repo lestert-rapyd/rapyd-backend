@@ -66,17 +66,18 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(200).json(rapydRes.data);
 
-  } catch (err) {
-  const errorData = err.response?.data || {};
-  const rapydStatus = errorData.status || {};
-  const mappedError = mapRapydError(rapydStatus.error_code);
-
-  console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
-
-  return res.status(400).json({
-    error: mappedError.code,
-    message: mappedError.message,
-    hint: mappedError.hint,
-    raw: rapydStatus  // Optional: include this for debugging
-  });
+    } catch (err) {
+    const errorData = err.response?.data || {};
+    const rapydStatus = errorData.status || {};
+    const mappedError = mapRapydError(rapydStatus.error_code);
+  
+    console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
+  
+    return res.status(400).json({
+      error: mappedError.code,
+      message: mappedError.message,
+      hint: mappedError.hint,
+      raw: rapydStatus  // Optional: include this for debugging
+    });
+  }
 }
