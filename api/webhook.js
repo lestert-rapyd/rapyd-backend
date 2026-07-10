@@ -55,9 +55,13 @@ export default async function handler(req, res) {
 
   const raw = await readRawBody(req);
   let event = {};
-  try { event = raw ? JSON.parse(raw) : (req.body || {}); } catch { event = {}; }
+  try { event = raw ? JSON.parse(raw) : (req.body || {}); } catch { event = req.body || {}; }
 
-  const verified = verifySignature(req, raw);
+  // Prefer the exact raw bytes; if Vercel already consumed them, fall back to
+  // the re-serialized parsed body (Rapyd sends compact JSON, so this usually
+  // reproduces what was signed).
+  const bodyForSig = raw && raw.length ? raw : JSON.stringify(event);
+  const verified = verifySignature(req, bodyForSig);
   const data = event.data || {};
   const ref = data.merchant_reference_id || event.merchant_reference_id || 'unknown';
 
