@@ -3,16 +3,20 @@ import { generateRapydSignature } from '../utils/generate-signature.js';
 import { mapRapydError } from '../utils/map-rapyd-error.js';
 
 export default async function handler(req, res) {
+  // Set CORS on EVERY response path, including the catch below — otherwise a
+  // Rapyd business error (e.g. refund amount exceeds refundable) returns 400
+  // without this header, the browser blocks the body, and the client sees a
+  // bogus "Failed to fetch" instead of Rapyd's real error.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
   // CORS preflight support
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
