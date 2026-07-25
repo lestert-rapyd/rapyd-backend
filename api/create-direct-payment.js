@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { generateRapydSignature } from '../utils/generate-signature.js'; // Adjust path if needed
 import { mapRapydError } from '../utils/map-rapyd-error.js';
+import { resolveKeys, clientIp } from '../utils/key-profiles.js';
 
 export default async function handler(req, res) {
   // Set CORS on every response path (incl. the catch), so a Rapyd decline/error
@@ -22,21 +23,24 @@ export default async function handler(req, res) {
     const body = req.body;
     const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
 
-    // Pick environment-specific keys
-    const accessKey = env === 'live'
-      ? process.env.RAPYD_LIVE_ACCESS_KEY
-      : process.env.RAPYD_SANDBOX_ACCESS_KEY;
-
-    const secretKey = env === 'live'
-      ? process.env.RAPYD_LIVE_SECRET_KEY
-      : process.env.RAPYD_SANDBOX_SECRET_KEY;
+    // Pick keys + collection wallet from the env/profile registry (SC1/SC2/SC3)
+    const { access: accessKey, secret: secretKey, ewallet } = resolveKeys({ env, profile: body.profile });
 
     // Validation
     if (!accessKey || !secretKey) {
-      console.error('Missing Rapyd keys for environment:', env);
+      console.error('Missing Rapyd keys for:', env, body.profile);
       res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(500).json({ error: `Missing API keys for ${env} environment` });
+      return res.status(500).json({ error: `Missing API keys for ${env}/${body.profile || 'SC1'}` });
     }
+
+    // Server-side enrichments — BEFORE signing, so the signature matches:
+    // the browser can't see its own public IP (client_details), and the live
+    // profile's wallet id is only known server-side.
+    if (body.client_details && !body.client_details.ip_address) {
+      const ip = clientIp(req);
+      if (ip) body.client_details.ip_address = ip;
+    }
+    if (!body.ewallet && ewallet) body.ewallet = ewallet;
 
     // Generate Rapyd signature
     const { salt, timestamp, signature } = generateRapydSignature(

@@ -1,0 +1,47 @@
+// Sandbox key-profile registry. Three sandbox MIDs (SC1/SC2/SC3) with
+// different feature sets — which 3DS provider the MID uses, whether it returns
+// network_reference_id, and which collection wallet(s) it owns. Live has a
+// single key pair. Secrets live in env vars ONLY:
+//
+//   RAPYD_SC1_ACCESS_KEY / RAPYD_SC1_SECRET_KEY / RAPYD_SC1_EWALLETS   (comma-list)
+//   RAPYD_SC2_*  RAPYD_SC3_*  — same scheme
+//   RAPYD_LIVE_ACCESS_KEY / RAPYD_LIVE_SECRET_KEY / RAPYD_LIVE_EWALLETS
+//
+// Back-compat: the pre-profile RAPYD_SANDBOX_ACCESS_KEY/SECRET_KEY pair keeps
+// working as the SC1 fallback so existing deployments don't break mid-rollout.
+
+export const PROFILES = {
+  SC1: { tds: 'rapyd',    nrid: true,  aft: true },
+  SC2: { tds: 'external', nrid: true,  aft: true },
+  SC3: { tds: 'rapyd',    nrid: false, aft: true },
+};
+
+export function resolveKeys({ env, profile } = {}) {
+  const isLive = env === 'live';
+  const id = isLive ? 'LIVE' : (PROFILES[profile] ? profile : 'SC1');
+  let access = process.env[`RAPYD_${id}_ACCESS_KEY`];
+  let secret = process.env[`RAPYD_${id}_SECRET_KEY`];
+  if (!access && id === 'SC1') {
+    access = process.env.RAPYD_SANDBOX_ACCESS_KEY;
+    secret = process.env.RAPYD_SANDBOX_SECRET_KEY;
+  }
+  const ewallets = (process.env[`RAPYD_${id}_EWALLETS`] || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return {
+    access,
+    secret,
+    ewallet: ewallets[0] || null,
+    ewallets,
+    profile: id,
+    features: isLive ? null : PROFILES[id],
+  };
+}
+
+/** Real client IP for client_details injection — the browser can't see its own
+    public IP, so payment handlers set it server-side whenever the frontend
+    sent a client_details object without one. */
+export function clientIp(req) {
+  const fwd = req.headers?.['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.length) return fwd.split(',')[0].trim();
+  return req.socket?.remoteAddress || undefined;
+}

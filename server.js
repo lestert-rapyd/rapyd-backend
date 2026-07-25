@@ -3,8 +3,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 
 import createCheckoutSession from './api/create-checkout-session.js';
+import createCustomer from './api/create-customer.js';
 import createDirectPayment from './api/create-direct-payment.js';
 import getFxRate from './api/get-fx-rate.js';
+import listCustomerPaymentMethods from './api/list-customer-payment-methods.js';
 import retrievePayment from './api/retrieve-payment.js';
 import webhook from './api/webhook.js';
 import webhooks from './api/webhooks.js';
@@ -23,8 +25,10 @@ app.use('/api/webhook', express.raw({ type: '*/*' }), (req, res, next) => {
 app.use(express.json());
 
 app.use('/api/create-checkout-session', createCheckoutSession);
+app.use('/api/create-customer', createCustomer);
 app.use('/api/create-direct-payment', createDirectPayment);
 app.use('/api/get-fx-rate', getFxRate);
+app.use('/api/list-customer-payment-methods', listCustomerPaymentMethods);
 app.use('/api/retrieve-payment', retrievePayment);
 app.use('/api/webhook', webhook);
 app.use('/api/webhooks', webhooks);

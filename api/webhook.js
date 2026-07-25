@@ -29,7 +29,12 @@ function verifySignature(req, rawBody) {
   const path = (req.url || '').split('?')[0];
   const url = `https://${host}${path}`;
 
+  // Any profile's MID may deliver here — try every configured key pair
+  // (the three sandbox profiles, the legacy flat sandbox pair, and live).
   const keyPairs = [
+    [process.env.RAPYD_SC1_ACCESS_KEY, process.env.RAPYD_SC1_SECRET_KEY],
+    [process.env.RAPYD_SC2_ACCESS_KEY, process.env.RAPYD_SC2_SECRET_KEY],
+    [process.env.RAPYD_SC3_ACCESS_KEY, process.env.RAPYD_SC3_SECRET_KEY],
     [process.env.RAPYD_SANDBOX_ACCESS_KEY, process.env.RAPYD_SANDBOX_SECRET_KEY],
     [process.env.RAPYD_LIVE_ACCESS_KEY, process.env.RAPYD_LIVE_SECRET_KEY],
   ];

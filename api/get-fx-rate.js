@@ -6,6 +6,7 @@
 import axios from 'axios';
 import { generateRapydSignature } from '../utils/generate-signature.js';
 import { mapRapydError } from '../utils/map-rapyd-error.js';
+import { resolveKeys } from '../utils/key-profiles.js';
 
 const CUR = /^[A-Z]{3,4}$/; // 3-letter ISO, or 4-letter stablecoin codes in sandbox
 
@@ -41,10 +42,9 @@ export default async function handler(req, res) {
     }
 
     const env = req.query?.env === 'live' ? 'live' : 'sandbox';
-    const accessKey = env === 'live' ? process.env.RAPYD_LIVE_ACCESS_KEY : process.env.RAPYD_SANDBOX_ACCESS_KEY;
-    const secretKey = env === 'live' ? process.env.RAPYD_LIVE_SECRET_KEY : process.env.RAPYD_SANDBOX_SECRET_KEY;
+    const { access: accessKey, secret: secretKey } = resolveKeys({ env, profile: req.query?.profile });
     if (!accessKey || !secretKey) {
-      return res.status(500).json({ error: `Missing API keys for ${env} environment` });
+      return res.status(500).json({ error: `Missing API keys for ${env}/${req.query?.profile || 'SC1'}` });
     }
 
     // Build the query string ONCE and sign the identical path we request —
