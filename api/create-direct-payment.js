@@ -24,7 +24,14 @@ export default async function handler(req, res) {
     const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
 
     // Pick keys + collection wallet from the env/profile registry (SC1/SC2/SC3)
-    const { access: accessKey, secret: secretKey, ewallet } = resolveKeys({ env, profile: body.profile });
+    const { access: accessKey, secret: secretKey, ewallet, fallback } = resolveKeys({ env, profile: body.profile });
+
+    // Transitional guard: when the SC1 env vars aren't deployed yet we sign
+    // with the LEGACY sandbox MID — the frontend's profile ewallet id doesn't
+    // belong to it and Rapyd rejects the payment with ERROR_GET_USER. Strip
+    // the wallet so the MID's default is used; the real routing engages
+    // automatically once RAPYD_SC1_* land in the environment.
+    if (fallback && body.ewallet) delete body.ewallet;
 
     // Validation
     if (!accessKey || !secretKey) {

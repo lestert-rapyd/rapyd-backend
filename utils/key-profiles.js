@@ -21,9 +21,11 @@ export function resolveKeys({ env, profile } = {}) {
   const id = isLive ? 'LIVE' : (PROFILES[profile] ? profile : 'SC1');
   let access = process.env[`RAPYD_${id}_ACCESS_KEY`];
   let secret = process.env[`RAPYD_${id}_SECRET_KEY`];
+  let fallback = false;
   if (!access && id === 'SC1') {
     access = process.env.RAPYD_SANDBOX_ACCESS_KEY;
     secret = process.env.RAPYD_SANDBOX_SECRET_KEY;
+    fallback = true; // legacy MID — the frontend's profile ewallet ids won't belong to it
   }
   const ewallets = (process.env[`RAPYD_${id}_EWALLETS`] || '')
     .split(',').map((s) => s.trim()).filter(Boolean);
@@ -33,6 +35,7 @@ export function resolveKeys({ env, profile } = {}) {
     ewallet: ewallets[0] || null,
     ewallets,
     profile: id,
+    fallback,
     features: isLive ? null : PROFILES[id],
   };
 }
