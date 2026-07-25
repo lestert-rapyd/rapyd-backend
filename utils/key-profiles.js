@@ -11,9 +11,9 @@
 // working as the SC1 fallback so existing deployments don't break mid-rollout.
 
 export const PROFILES = {
-  SC1: { tds: 'rapyd',    nrid: true,  aft: true },
+  SC1: { tds: 'rapyd',    nrid: false, aft: true },
   SC2: { tds: 'external', nrid: true,  aft: true },
-  SC3: { tds: 'rapyd',    nrid: false, aft: true },
+  SC3: { tds: 'rapyd',    nrid: true,  aft: true },
 };
 
 export function resolveKeys({ env, profile } = {}) {
