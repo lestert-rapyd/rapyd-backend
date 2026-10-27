@@ -1,23 +1,28 @@
 import crypto from 'crypto';
 
 /**
- * Generate Rapyd REST API signature using keys from environment variables or provided keys
- * @param {string} method     - HTTP method (lowercase recommended)
- * @param {string} urlPath    - URL path starting with /v1/..., including query string if any
- * @param {Object|null} body  - JSON payload object or null for GET requests
- * @param {string} [accessKey] - Optional access key (overrides env var)
- * @param {string} [secretKey] - Optional secret key (overrides env var)
- * @returns {Object}          - { salt, timestamp, signature }
+ * Generate Rapyd REST API request signature.
+ *
+ *   signature = base64url( hex( HMAC-SHA256(secret,
+ *                 method + urlPath + salt + timestamp + access_key + secret_key + body) ) )
+ *
+ * @param {string} method              - HTTP method, lowercase ('get' | 'post')
+ * @param {string} urlPath             - path starting with /v1/..., query string included
+ * @param {Object|string|null} body    - payload object, or the EXACT JSON string that will be
+ *                                       sent (preferred — the signature must cover the bytes on
+ *                                       the wire), or null/'' for GET
+ * @param {string} accessKey
+ * @param {string} secretKey
+ * @returns {{ salt: string, timestamp: string, signature: string }}
  */
 export function generateRapydSignature(method, urlPath, body = null, accessKey, secretKey) {
-  const access_key = accessKey || process.env.RAPYD_ACCESS_KEY;
-  const secret_key = secretKey || process.env.RAPYD_SECRET_KEY;
-
-  if (!access_key || !secret_key) {
-    throw new Error('Missing RAPYD_ACCESS_KEY or RAPYD_SECRET_KEY in environment variables or function parameters');
+  // No env-var fallback: every caller resolves keys through key-profiles.js,
+  // so a missing pair here is a bug, not a config to paper over.
+  if (!accessKey || !secretKey) {
+    throw new Error('generateRapydSignature: accessKey and secretKey are required');
   }
 
-  // Generate salt - 12 unique alphanumeric chars
+  // Salt - 12 unique alphanumeric chars
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let salt = '';
   while (salt.length < 12) {
@@ -28,21 +33,17 @@ export function generateRapydSignature(method, urlPath, body = null, accessKey, 
   // Unix timestamp in seconds
   const timestamp = Math.floor(Date.now() / 1000).toString();
 
-  // JSON stringified body (no spaces), or empty string if no body
-  const bodyString = body ? JSON.stringify(body) : '';
+  // A pre-serialized string is signed verbatim; an object is compacted with
+  // JSON.stringify (no spaces) — the same serializer rapydRequest sends with.
+  const bodyString = typeof body === 'string' ? body : (body ? JSON.stringify(body) : '');
 
   // If urlPath is full URL, trim to /v1/...
   if (urlPath.startsWith('http')) {
     urlPath = urlPath.substring(urlPath.indexOf('/v1'));
   }
 
-  // Compose string to sign
-  const toSign = method + urlPath + salt + timestamp + access_key + secret_key + bodyString;
-
-  // HMAC-SHA256 hex digest
-  const hmac = crypto.createHmac('sha256', secret_key);
-  hmac.update(toSign);
-  const signatureHex = hmac.digest('hex');
+  const toSign = method + urlPath + salt + timestamp + accessKey + secretKey + bodyString;
+  const signatureHex = crypto.createHmac('sha256', secretKey).update(toSign).digest('hex');
 
   // Base64 URL-safe encode the hex digest string
   const signature = Buffer.from(signatureHex)

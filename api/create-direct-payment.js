@@ -1,96 +1,52 @@
-import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js'; // Adjust path if needed
-import { mapRapydError } from '../utils/map-rapyd-error.js';
+// POST /api/create-direct-payment → Rapyd POST /v1/payments
+// Own-fields flow, express token charge and back-office MIT charge. The body
+// is the Rapyd payment body plus routing fields (env, profile) that are
+// stripped before signing. Live: gated by X-PayBridge-Live-Token, no raw
+// card data, allowlisted fields, amount <= LIVE_MAX_AMOUNT (utils/live-guards.js).
+
 import { resolveKeys, clientIp } from '../utils/key-profiles.js';
+import {
+  applyCors, methodNotAllowed, readJsonBody, resolveEnv, cleanBody, assertLive,
+  idempotencyKey, rapydRequest, missingKeysError, sendError,
+} from '../utils/http.js';
+
+const METHODS = ['POST'];
 
 export default async function handler(req, res) {
-  // Set CORS on every response path (incl. the catch), so a Rapyd decline/error
-  // returns its real body instead of being CORS-blocked into a "Failed to fetch".
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // CORS preflight support
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (applyCors(req, res, METHODS)) return;
+  if (req.method !== 'POST') return methodNotAllowed(res, METHODS);
 
   try {
-    const body = req.body;
-    const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
+    const input = readJsonBody(req);
+    const { env, profile } = resolveEnv(input);
+    const body = cleanBody(input);
+    assertLive(req, env, 'create-direct-payment', body);
 
-    // Pick keys + collection wallet from the env/profile registry (SC1/SC2/SC3)
-    const { access: accessKey, secret: secretKey, ewallet, fallback } = resolveKeys({ env, profile: body.profile });
+    // Keys + collection wallet from the env/profile registry (SC1/SC2/SC3)
+    const keys = resolveKeys({ env, profile });
+    if (!keys.access || !keys.secret) throw missingKeysError(env, keys.profile);
 
     // Transitional guard: when the SC1 env vars aren't deployed yet we sign
     // with the LEGACY sandbox MID — the frontend's profile ewallet id doesn't
     // belong to it and Rapyd rejects the payment with ERROR_GET_USER. Strip
     // the wallet so the MID's default is used; the real routing engages
     // automatically once RAPYD_SC1_* land in the environment.
-    if (fallback && body.ewallet) delete body.ewallet;
-
-    // Validation
-    if (!accessKey || !secretKey) {
-      console.error('Missing Rapyd keys for:', env, body.profile);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(500).json({ error: `Missing API keys for ${env}/${body.profile || 'SC1'}` });
-    }
+    if (keys.fallback && body.ewallet) delete body.ewallet;
 
     // Server-side enrichments — BEFORE signing, so the signature matches:
     // the browser can't see its own public IP (client_details), and the live
     // profile's wallet id is only known server-side.
-    if (body.client_details && !body.client_details.ip_address) {
+    if (body.client_details && typeof body.client_details === 'object' && !body.client_details.ip_address) {
       const ip = clientIp(req);
-      if (ip) body.client_details.ip_address = ip;
+      if (ip) body.client_details = { ...body.client_details, ip_address: ip };
     }
-    if (!body.ewallet && ewallet) body.ewallet = ewallet;
+    if (!body.ewallet && keys.ewallet) body.ewallet = keys.ewallet;
 
-    // Generate Rapyd signature
-    const { salt, timestamp, signature } = generateRapydSignature(
-      'post',
-      '/v1/payments',
-      body,
-      accessKey,
-      secretKey
-    );
-
-    const headers = {
-      'Content-Type': 'application/json',
-      access_key: accessKey,
-      salt,
-      timestamp,
-      signature,
-      idempotency: timestamp + salt,
-    };
-
-    const baseURL = env === 'live'
-      ? 'https://api.rapyd.net'
-      : 'https://sandboxapi.rapyd.net';
-
-    const rapydRes = await axios.post(`${baseURL}/v1/payments`, body, {
-      headers,
-      timeout: 10000,
+    const data = await rapydRequest({
+      method: 'post', path: '/v1/payments', body, env, keys, idempotencyKey: idempotencyKey(req),
     });
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.status(200).json(rapydRes.data);
-
-    } catch (err) {
-    const errorData = err.response?.data || {};
-    const rapydStatus = errorData.status || {};
-    const mappedError = mapRapydError(rapydStatus.error_code);
-  
-    console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
-  
-    return res.status(400).json({
-      error: mappedError.code,
-      message: mappedError.message,
-      hint: mappedError.hint,
-      raw: rapydStatus  // Optional: include this for debugging
-    });
+    return res.status(200).json(data);
+  } catch (err) {
+    return sendError(res, err, 'create-direct-payment');
   }
 }
