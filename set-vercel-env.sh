@@ -5,7 +5,7 @@
 #
 # Picked up (names only, from .env — see .env.example for what each does):
 #   RAPYD_SC<n>_*, RAPYD_SANDBOX_*, RAPYD_LIVE_*, PAYBRIDGE_LIVE_TOKEN,
-#   ALLOWED_ORIGINS, LIVE_MAX_AMOUNT, WEBHOOK_REQUIRE_SIGNATURE, WEBHOOK_PUBLIC_URL
+#   ALLOWED_ORIGINS, LIVE_MAX_AMOUNT, LIVE_PAYOUTS_ENABLED, WEBHOOK_REQUIRE_SIGNATURE, WEBHOOK_PUBLIC_URL
 # NOT pushed: PORT (local only) and KV_*/UPSTASH_* (Vercel injects those when
 # the KV store is connected to the project). Empty assignments are skipped.
 #
@@ -26,7 +26,7 @@ cd "$(dirname "$0")"
 TARGETS=("$@"); [ ${#TARGETS[@]} -eq 0 ] && TARGETS=(production preview)
 
 # discover the var names actually present in .env (no values echoed)
-NAME_RE='^(RAPYD_SC[0-9]+_[A-Z_]+|RAPYD_SANDBOX_[A-Z_]+|RAPYD_LIVE_[A-Z_]+|PAYBRIDGE_LIVE_TOKEN|ALLOWED_ORIGINS|LIVE_MAX_AMOUNT|WEBHOOK_REQUIRE_SIGNATURE|WEBHOOK_PUBLIC_URL)='
+NAME_RE='^(RAPYD_SC[0-9]+_[A-Z_]+|RAPYD_SANDBOX_[A-Z_]+|RAPYD_LIVE_[A-Z_]+|PAYBRIDGE_LIVE_TOKEN|ALLOWED_ORIGINS|LIVE_MAX_AMOUNT|LIVE_PAYOUTS_ENABLED|WEBHOOK_REQUIRE_SIGNATURE|WEBHOOK_PUBLIC_URL)='
 VARS=()
 while IFS= read -r v; do [ -n "$v" ] && VARS+=("$v"); done < <(grep -oE "$NAME_RE" .env | sed 's/=$//' | sort -u)
 [ ${#VARS[@]} -eq 0 ] && { echo "no known backend vars found in .env"; exit 1; }

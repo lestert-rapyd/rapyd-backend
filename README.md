@@ -18,6 +18,15 @@ forward it to Rapyd. Deployed as Vercel serverless functions (`api/*.js`);
 | GET | `/api/retrieve-customer?id=cus_…` | `GET /v1/customers/{id}` |
 | GET | `/api/list-customer-payment-methods?customer=cus_…` | `GET /v1/customers/{id}/payment_methods?category=card` |
 | GET | `/api/get-fx-rate?buy_currency=…&sell_currency=…` | `GET /v1/fx_rates` |
+| POST | `/api/create-payout` | `POST /v1/payouts` (merchant-site Withdraw — a card payout) |
+| GET | `/api/retrieve-payout?id=payout_…` | `GET /v1/payouts/{id}` |
+| GET | `/api/payout-required-fields?payout_method_type=…&sender_country=…&sender_currency=…&beneficiary_country=…&payout_currency=…&sender_entity_type=…&beneficiary_entity_type=…&payout_amount=…` | `GET /v1/payout_methods/{type}/required_fields` |
+| GET | `/api/payout-method-types?category=card&beneficiary_country=…&payout_currency=…` | `GET /v1/payout_method_types` |
+
+The four payout routes are one Vercel function: `vercel.json` rewrites them onto
+`api/payouts.js?op=…`, which dispatches to `handlers/payouts/*.js` (the Hobby
+plan allows 12 functions per deployment, and every file under `api/` is one).
+`server.js` mounts the handlers directly, so local runs need no rewrite.
 | POST | `/api/webhook` | Rapyd → us: verifies the signature, files the event in KV |
 | GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` | stored events; no parameter → `400 MISSING_REF` |
 
@@ -68,6 +77,29 @@ Live requests use real merchant keys, so the server enforces:
   not PCI-scoped; live uses `card_***` tokens or the hosted toolkit.
 - **Field allowlist.** Top-level fields outside the per-endpoint list in
   `utils/live-guards.js` → `400 LIVE_FIELD_NOT_ALLOWED` (with `fields`).
+- **Payouts off unless opted in.** Payouts send money OUT of the merchant's
+  wallet, so every payout endpoint (create, retrieve, required fields, method
+  types) answers live requests with `403 LIVE_PAYOUTS_DISABLED` unless
+  `LIVE_PAYOUTS_ENABLED=true` is set — **default off**. With it on, the gate,
+  allowlist and cap above still apply: `payout_amount ≤ LIVE_MAX_AMOUNT`,
+  no `sender_amount` / `ewallet` (the source wallet is injected from
+  `RAPYD_LIVE_EWALLETS`), and no raw card (`beneficiary.card_number` →
+  `LIVE_RAW_CARD_FORBIDDEN`) — a live payout can only target a saved
+  `card_***`.
+
+## Payouts (sandbox)
+
+`/api/create-payout` validates the body's shape (`utils/payouts.js
+payoutBodyProblem`: positive `payout_amount`, `<cc>_…` method type whose prefix
+matches `beneficiary_country`, ISO codes, `individual`/`company`,
+`merchant_reference_id` ≤ 45 chars — Rapyd's payout limit) and injects the
+profile's wallet as `ewallet` when the caller sent none; no wallet configured →
+`400 MISSING_EWALLET`. The source wallet must hold funds in the payout currency:
+top a sandbox wallet up with Rapyd's sandbox-only *Add Funds to Wallet Account*
+(`POST /v1/account/deposit` — docs.rapyd.net/en/add-funds-to-wallet-account.html)
+or from the Client Portal. Card payouts must also be enabled for the MID.
+Payout webhooks (`PAYOUT_COMPLETED`, `PAYOUT_FAILED`) are filed by
+`merchant_reference_id` like payment ones (register them for the MID).
 
 ## Deploying
 
