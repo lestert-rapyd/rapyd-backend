@@ -3,10 +3,11 @@
 // 500 MISSING_KEYS — Rapyd is never contacted.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import createPayout from '../api/create-payout.js';
-import retrievePayout from '../api/retrieve-payout.js';
-import payoutRequiredFields from '../api/payout-required-fields.js';
-import payoutMethodTypes from '../api/payout-method-types.js';
+import createPayout from '../handlers/payouts/create-payout.js';
+import retrievePayout from '../handlers/payouts/retrieve-payout.js';
+import payoutRequiredFields from '../handlers/payouts/payout-required-fields.js';
+import payoutMethodTypes from '../handlers/payouts/payout-method-types.js';
+import payouts from '../api/payouts.js';
 import { payoutBodyProblem, requiredFieldsPath, methodTypesPath, assertPayoutsAllowed } from '../utils/payouts.js';
 import { liveGuardError, hasRawCard, livePayoutsEnabled, LIVE_ALLOWED_FIELDS } from '../utils/live-guards.js';
 import { useCleanEnv, fakeReq, fakeRes, LIVE_TOKEN } from './_helpers.js';
@@ -233,5 +234,21 @@ describe('live allowlist for create-payout', () => {
   test('hasRawCard catches a payout card_number', () => {
     assert.equal(hasRawCard({ beneficiary: { card_number: '4111111111111111' } }), true);
     assert.equal(hasRawCard({ beneficiary: { card_id: 'card_abc' } }), false);
+  });
+});
+
+describe('api/payouts.js dispatcher (vercel.json rewrites land here)', () => {
+  useCleanEnv();
+  test('unknown or missing op → 404 UNKNOWN_OPERATION, no Rapyd call', async () => {
+    for (const query of [{}, { op: 'nope' }, { op: 'constructor' }]) {
+      const res = await run(payouts, { method: 'GET', query });
+      assert.equal(res.statusCode, 404);
+      assert.equal(res.body.error, 'UNKNOWN_OPERATION');
+    }
+  });
+  test('op routes to the matching handler (retrieve validates its id)', async () => {
+    const res = await run(payouts, { method: 'GET', query: { op: 'retrieve', id: 'not-a-payout' } });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.error, 'INVALID_ID');
   });
 });

@@ -22,6 +22,11 @@ forward it to Rapyd. Deployed as Vercel serverless functions (`api/*.js`);
 | GET | `/api/retrieve-payout?id=payout_…` | `GET /v1/payouts/{id}` |
 | GET | `/api/payout-required-fields?payout_method_type=…&sender_country=…&sender_currency=…&beneficiary_country=…&payout_currency=…&sender_entity_type=…&beneficiary_entity_type=…&payout_amount=…` | `GET /v1/payout_methods/{type}/required_fields` |
 | GET | `/api/payout-method-types?category=card&beneficiary_country=…&payout_currency=…` | `GET /v1/payout_method_types` |
+
+The four payout routes are one Vercel function: `vercel.json` rewrites them onto
+`api/payouts.js?op=…`, which dispatches to `handlers/payouts/*.js` (the Hobby
+plan allows 12 functions per deployment, and every file under `api/` is one).
+`server.js` mounts the handlers directly, so local runs need no rewrite.
 | POST | `/api/webhook` | Rapyd → us: verifies the signature, files the event in KV |
 | GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` | stored events; no parameter → `400 MISSING_REF` |
 

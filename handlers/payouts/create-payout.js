@@ -11,12 +11,12 @@
 // allowlist, no raw card data (beneficiary.card_number) and
 // payout_amount <= LIVE_MAX_AMOUNT (utils/live-guards.js).
 
-import { resolveKeys } from '../utils/key-profiles.js';
+import { resolveKeys } from '../../utils/key-profiles.js';
 import {
   applyCors, methodNotAllowed, readJsonBody, resolveEnv, cleanBody, assertLive,
   idempotencyKey, rapydRequest, missingKeysError, sendError, HttpError,
-} from '../utils/http.js';
-import { assertPayoutsAllowed, payoutBodyProblem } from '../utils/payouts.js';
+} from '../../utils/http.js';
+import { assertPayoutsAllowed, payoutBodyProblem } from '../../utils/payouts.js';
 
 const METHODS = ['POST'];
 

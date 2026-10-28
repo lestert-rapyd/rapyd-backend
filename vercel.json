@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api/create-payout", "destination": "/api/payouts?op=create" },
+    { "source": "/api/retrieve-payout", "destination": "/api/payouts?op=retrieve" },
+    { "source": "/api/payout-method-types", "destination": "/api/payouts?op=method_types" },
+    { "source": "/api/payout-required-fields", "destination": "/api/payouts?op=required_fields" }
+  ]
+}

@@ -5,8 +5,8 @@
 // Docs: https://docs.rapyd.net/en/list-payout-method-types.html
 // Live: refused unless LIVE_PAYOUTS_ENABLED=true, then the live gate.
 
-import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../utils/http.js';
-import { assertPayoutsAllowed, methodTypesPath } from '../utils/payouts.js';
+import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../../utils/http.js';
+import { assertPayoutsAllowed, methodTypesPath } from '../../utils/payouts.js';
 
 const METHODS = ['GET'];
 
