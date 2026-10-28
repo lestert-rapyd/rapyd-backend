@@ -1,84 +1,30 @@
-import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js';
-import { mapRapydError } from '../utils/map-rapyd-error.js';
-import { resolveKeys } from '../utils/key-profiles.js';
+// POST /api/create-refund → Rapyd POST /v1/refunds
+// Back office refunds. Refunds must be signed by the SAME MID that took the
+// payment, so the frontend passes the profile recorded on the ledger entry.
+// Live: gated, allowlisted, and the refund must carry an amount <= LIVE_MAX_AMOUNT.
+
+import {
+  applyCors, methodNotAllowed, readJsonBody, resolveEnv, cleanBody, assertLive,
+  idempotencyKey, rapydRequest, sendError,
+} from '../utils/http.js';
+
+const METHODS = ['POST'];
 
 export default async function handler(req, res) {
-  // Set CORS on EVERY response path, including the catch below — otherwise a
-  // Rapyd business error (e.g. refund amount exceeds refundable) returns 400
-  // without this header, the browser blocks the body, and the client sees a
-  // bogus "Failed to fetch" instead of Rapyd's real error.
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // CORS preflight support
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (applyCors(req, res, METHODS)) return;
+  if (req.method !== 'POST') return methodNotAllowed(res, METHODS);
 
   try {
-    const body = req.body;
-    const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
+    const input = readJsonBody(req);
+    const { env, profile } = resolveEnv(input);
+    const body = cleanBody(input);
+    assertLive(req, env, 'create-refund', body);
 
-    // Pick keys from the env/profile registry (SC1/SC2/SC3) — refunds must be
-    // signed by the SAME MID that took the payment, so the frontend passes the
-    // profile recorded on the ledger entry.
-    const { access: accessKey, secret: secretKey } = resolveKeys({ env, profile: body.profile });
-
-    // Validation
-    if (!accessKey || !secretKey) {
-      console.error('Missing Rapyd keys for:', env, body.profile);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(500).json({ error: `Missing API keys for ${env}/${body.profile || 'SC1'}` });
-    }
-
-    // Generate Rapyd signature
-    const { salt, timestamp, signature } = generateRapydSignature(
-      'post',
-      '/v1/refunds',
-      body,
-      accessKey,
-      secretKey
-    );
-
-    const headers = {
-      'Content-Type': 'application/json',
-      access_key: accessKey,
-      salt,
-      timestamp,
-      signature,
-      idempotency: timestamp + salt,
-    };
-
-    const baseURL = env === 'live'
-      ? 'https://api.rapyd.net'
-      : 'https://sandboxapi.rapyd.net';
-
-    const rapydRes = await axios.post(`${baseURL}/v1/refunds`, body, {
-      headers,
-      timeout: 10000,
+    const data = await rapydRequest({
+      method: 'post', path: '/v1/refunds', body, env, profile, idempotencyKey: idempotencyKey(req),
     });
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.status(200).json(rapydRes.data);
-
-    } catch (err) {
-    const errorData = err.response?.data || {};
-    const rapydStatus = errorData.status || {};
-    const mappedError = mapRapydError(rapydStatus.error_code);
-
-    console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
-
-    return res.status(400).json({
-      error: mappedError.code,
-      message: mappedError.message,
-      hint: mappedError.hint,
-      raw: rapydStatus  // Optional: include this for debugging
-    });
+    return res.status(200).json(data);
+  } catch (err) {
+    return sendError(res, err, 'create-refund');
   }
 }

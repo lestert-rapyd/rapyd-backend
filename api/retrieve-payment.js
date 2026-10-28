@@ -1,52 +1,30 @@
-// GET /api/retrieve-payment?id=payment_xxx&env=sandbox|live
+// GET /api/retrieve-payment?id=payment_xxx&env=sandbox|live&profile=SC1|SC2|SC3
 // Signed proxy to Rapyd's Retrieve Payment. Used as the polling fallback when
-// a webhook is delayed or not yet configured.
+// a webhook is delayed, unverified or not yet configured.
 
-import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js';
-import { mapRapydError } from '../utils/map-rapyd-error.js';
-import { resolveKeys } from '../utils/key-profiles.js';
+import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../utils/http.js';
+
+const METHODS = ['GET'];
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (applyCors(req, res, METHODS)) return;
+  if (req.method !== 'GET') return methodNotAllowed(res, METHODS);
 
   try {
-    const paymentId = req.query?.id;
-    if (!paymentId || !/^payment_[a-f0-9]+$/i.test(paymentId)) {
-      return res.status(400).json({ error: 'Missing or invalid payment id' });
+    const q = req.query || {};
+    const paymentId = q.id;
+    if (typeof paymentId !== 'string' || !/^payment_[a-f0-9]+$/i.test(paymentId)) {
+      return res.status(400).json({ error: 'INVALID_ID', message: 'Missing or invalid payment id' });
     }
 
-    const env = req.query?.env === 'live' ? 'live' : 'sandbox';
     // A payment is only visible to the MID that created it — the frontend
     // passes the profile recorded on the ledger entry.
-    const { access: accessKey, secret: secretKey } = resolveKeys({ env, profile: req.query?.profile });
-    if (!accessKey || !secretKey) {
-      return res.status(500).json({ error: `Missing API keys for ${env}/${req.query?.profile || 'SC1'}` });
-    }
+    const { env, profile } = resolveEnv(q);
+    assertLive(req, env);
 
-    const urlPath = `/v1/payments/${paymentId}`;
-    const { salt, timestamp, signature } = generateRapydSignature('get', urlPath, null, accessKey, secretKey);
-    const baseURL = env === 'live' ? 'https://api.rapyd.net' : 'https://sandboxapi.rapyd.net';
-
-    const rapydRes = await axios.get(`${baseURL}${urlPath}`, {
-      headers: { 'Content-Type': 'application/json', access_key: accessKey, salt, timestamp, signature },
-      timeout: 10000,
-    });
-
-    return res.status(200).json(rapydRes.data);
+    const data = await rapydRequest({ method: 'get', path: `/v1/payments/${paymentId}`, env, profile });
+    return res.status(200).json(data);
   } catch (err) {
-    const rapydStatus = err.response?.data?.status || {};
-    const mappedError = mapRapydError(rapydStatus.error_code);
-    console.error('Rapyd retrieve error:', JSON.stringify(rapydStatus, null, 2));
-    return res.status(400).json({ error: mappedError.code, message: mappedError.message, raw: rapydStatus });
+    return sendError(res, err, 'retrieve-payment');
   }
 }

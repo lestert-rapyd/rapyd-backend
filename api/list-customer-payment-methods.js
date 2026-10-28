@@ -4,51 +4,30 @@
 // save-while-paying completes. Card objects carry id (card_***), type, last4,
 // expiration_month/year and network_reference_id.
 
-import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js';
-import { mapRapydError } from '../utils/map-rapyd-error.js';
-import { resolveKeys } from '../utils/key-profiles.js';
+import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../utils/http.js';
+
+const METHODS = ['GET'];
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (applyCors(req, res, METHODS)) return;
+  if (req.method !== 'GET') return methodNotAllowed(res, METHODS);
 
   try {
-    const customer = req.query?.customer;
-    if (!customer || !/^cus_[a-f0-9]+$/i.test(customer)) {
-      return res.status(400).json({ error: 'Missing or invalid customer id' });
+    const q = req.query || {};
+    const customer = q.customer;
+    if (typeof customer !== 'string' || !/^cus_[a-f0-9]+$/i.test(customer)) {
+      return res.status(400).json({ error: 'INVALID_ID', message: 'Missing or invalid customer id' });
     }
 
-    const env = req.query?.env === 'live' ? 'live' : 'sandbox';
-    const { access: accessKey, secret: secretKey } = resolveKeys({ env, profile: req.query?.profile });
-    if (!accessKey || !secretKey) {
-      return res.status(500).json({ error: `Missing API keys for ${env}/${req.query?.profile || 'SC1'}` });
-    }
+    const { env, profile } = resolveEnv(q);
+    assertLive(req, env);
 
     // Sign the identical path we request — Rapyd recomputes the signature over
     // the path it receives, query string included (same rule as get-fx-rate).
-    const urlPath = `/v1/customers/${customer}/payment_methods?category=card`;
-    const { salt, timestamp, signature } = generateRapydSignature('get', urlPath, null, accessKey, secretKey);
-    const baseURL = env === 'live' ? 'https://api.rapyd.net' : 'https://sandboxapi.rapyd.net';
-
-    const rapydRes = await axios.get(`${baseURL}${urlPath}`, {
-      headers: { 'Content-Type': 'application/json', access_key: accessKey, salt, timestamp, signature },
-      timeout: 10000,
-    });
-
-    return res.status(200).json(rapydRes.data);
+    const path = `/v1/customers/${customer}/payment_methods?category=card`;
+    const data = await rapydRequest({ method: 'get', path, env, profile });
+    return res.status(200).json(data);
   } catch (err) {
-    const rapydStatus = err.response?.data?.status || {};
-    const mappedError = mapRapydError(rapydStatus.error_code);
-    console.error('Rapyd list-payment-methods error:', JSON.stringify(rapydStatus, null, 2));
-    return res.status(400).json({ error: mappedError.code, message: mappedError.message, raw: rapydStatus });
+    return sendError(res, err, 'list-customer-payment-methods');
   }
 }

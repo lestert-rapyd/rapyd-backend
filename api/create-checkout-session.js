@@ -1,80 +1,30 @@
-import axios from 'axios';
-import { generateRapydSignature } from '../utils/generate-signature.js'; // Adjust path if needed
-import { mapRapydError } from '../utils/map-rapyd-error.js';
-import { resolveKeys } from '../utils/key-profiles.js';
+// POST /api/create-checkout-session → Rapyd POST /v1/checkout
+// Toolkit flow: creates the hosted/embedded checkout page. Routing fields
+// (env, profile) are stripped before signing; live is gated and guarded
+// (utils/live-guards.js).
+
+import {
+  applyCors, methodNotAllowed, readJsonBody, resolveEnv, cleanBody, assertLive,
+  idempotencyKey, rapydRequest, sendError,
+} from '../utils/http.js';
+
+const METHODS = ['POST'];
 
 export default async function handler(req, res) {
-  // Set CORS on every response path (incl. the catch), so a Rapyd error
-  // returns its real body instead of being CORS-blocked into a "Failed to fetch".
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // CORS preflight support
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (applyCors(req, res, METHODS)) return;
+  if (req.method !== 'POST') return methodNotAllowed(res, METHODS);
 
   try {
-    const body = req.body;
-    const env = body.env === 'live' ? 'live' : 'sandbox'; // default to sandbox
+    const input = readJsonBody(req);
+    const { env, profile } = resolveEnv(input);
+    const body = cleanBody(input);
+    assertLive(req, env, 'create-checkout-session', body);
 
-    // Pick keys from the env/profile registry (SC1/SC2/SC3)
-    const { access: accessKey, secret: secretKey } = resolveKeys({ env, profile: body.profile });
-
-    // Validation
-    if (!accessKey || !secretKey) {
-      console.error('Missing Rapyd keys for:', env, body.profile);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(500).json({ error: `Missing API keys for ${env}/${body.profile || 'SC1'}` });
-    }
-
-    // Generate Rapyd signature
-    const { salt, timestamp, signature } = generateRapydSignature(
-      'post',
-      '/v1/checkout',
-      body,
-      accessKey,
-      secretKey
-    );
-
-    const headers = {
-      'Content-Type': 'application/json',
-      access_key: accessKey,
-      salt,
-      timestamp,
-      signature,
-      idempotency: timestamp + salt,
-    };
-
-    const baseURL = env === 'live'
-      ? 'https://api.rapyd.net'
-      : 'https://sandboxapi.rapyd.net';
-
-    const rapydRes = await axios.post(`${baseURL}/v1/checkout`, body, {
-      headers,
-      timeout: 10000,
+    const data = await rapydRequest({
+      method: 'post', path: '/v1/checkout', body, env, profile, idempotencyKey: idempotencyKey(req),
     });
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.status(200).json(rapydRes.data);
-
-    } catch (err) {
-    const errorData = err.response?.data || {};
-    const rapydStatus = errorData.status || {};
-    const mappedError = mapRapydError(rapydStatus.error_code);
-  
-    console.error('Rapyd error:', JSON.stringify(rapydStatus, null, 2));
-  
-    return res.status(400).json({
-      error: mappedError.code,
-      message: mappedError.message,
-      hint: mappedError.hint,
-      raw: rapydStatus  // Optional: include this for debugging
-    });
+    return res.status(200).json(data);
+  } catch (err) {
+    return sendError(res, err, 'create-checkout-session');
   }
 }
