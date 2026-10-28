@@ -12,7 +12,13 @@
           is not PCI-scoped, so live only takes card_*** tokens or the toolkit;
         · top-level fields must be in the endpoint's allowlist below;
         · amount must be > 0 and <= LIVE_MAX_AMOUNT (default 1) on payments,
-          checkout sessions and refunds (a live refund must state its amount).
+          checkout sessions and refunds (a live refund must state its amount)
+          — and on payouts, where the capped field is payout_amount.
+
+   3. livePayoutsEnabled(): payouts SEND money out of the merchant's wallet,
+      so on top of the gate every live payout endpoint is refused outright
+      (403 LIVE_PAYOUTS_DISABLED) unless LIVE_PAYOUTS_ENABLED=true is set.
+      Default: off. Sandbox payouts are never affected.
    ───────────────────────────────────────────────────────────── */
 
 import crypto from 'crypto';
@@ -44,9 +50,30 @@ export const LIVE_ALLOWED_FIELDS = {
   'create-customer': [
     'name', 'email', 'date_of_birth', 'birth_country', 'nationality', 'occupation', 'addresses',
   ],
+  // paybridge/js/site/wallet.js payoutBody. Not listed: ewallet (the live
+  // source wallet is injected server-side, like payments), sender_amount (the
+  // cap reads payout_amount — a sender-side amount would dodge it), metadata,
+  // payout_fees, merchant_ewallet. The beneficiary must be a card_*** token in
+  // live: hasRawCard() refuses card_number anywhere in the body.
+  'create-payout': [
+    'payout_amount', 'payout_currency', 'payout_method_type', 'sender_currency', 'sender_country',
+    'sender_entity_type', 'beneficiary_country', 'beneficiary_entity_type', 'beneficiary', 'sender',
+    'merchant_reference_id', 'description', 'statement_descriptor', 'confirm_automatically',
+  ],
 };
 
-const AMOUNT_CAPPED = new Set(['create-direct-payment', 'create-checkout-session', 'create-refund']);
+/* Which body field carries the capped amount, per endpoint. */
+const AMOUNT_FIELD = {
+  'create-direct-payment': 'amount',
+  'create-checkout-session': 'amount',
+  'create-refund': 'amount',
+  'create-payout': 'payout_amount',
+};
+
+/** True only for the exact string 'true' — live payouts are opt-in. */
+export function livePayoutsEnabled() {
+  return String(process.env.LIVE_PAYOUTS_ENABLED || '').trim().toLowerCase() === 'true';
+}
 
 /** LIVE_MAX_AMOUNT as a positive number; anything unset/invalid → 1. */
 export function liveMaxAmount() {
@@ -94,12 +121,14 @@ const present = (v) => v !== undefined && v !== null && v !== '';
 const MAX_DEPTH = 8; // Rapyd's card paths sit 2–3 levels deep; nothing legit nests this far
 
 /** True when the value carries card-shaped data anywhere: an object with
-    both `number` and `cvv`, or any `fields` object with a `number`
-    (payment_method.fields.number — incl. the CVV-less NRID/vault shape). */
+    both `number` and `cvv`, any `fields` object with a `number`
+    (payment_method.fields.number — incl. the CVV-less NRID/vault shape), or
+    a payout beneficiary's `card_number` (Create Payout's raw-card shape). */
 export function hasRawCard(node, depth = 0) {
   if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return false;
   if (Array.isArray(node)) return node.some((n) => hasRawCard(n, depth + 1));
   if (present(node.number) && present(node.cvv)) return true;
+  if (present(node.card_number)) return true;
   const f = node.fields;
   if (f && typeof f === 'object' && present(f.number)) return true;
   return Object.values(node).some((v) => hasRawCard(v, depth + 1));
@@ -143,14 +172,15 @@ export function liveGuardError(endpoint, body) {
     };
   }
 
-  if (AMOUNT_CAPPED.has(endpoint)) {
+  const field = AMOUNT_FIELD[endpoint];
+  if (field) {
     const cap = liveMaxAmount();
-    const n = amountOf(b.amount);
+    const n = amountOf(b[field]);
     if (!Number.isFinite(n) || n <= 0 || n > cap) {
       return {
         status: 400,
         error: 'LIVE_LIMIT',
-        message: `Live amounts must be greater than 0 and at most ${cap}`
+        message: `Live ${field === 'amount' ? 'amounts' : field} must be greater than 0 and at most ${cap}`
           + (endpoint === 'create-refund' ? ' — a live refund must state an explicit amount.' : '.'),
       };
     }

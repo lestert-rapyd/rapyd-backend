@@ -142,7 +142,7 @@ const scalar = (v) => (v === null || ['string', 'number', 'boolean'].includes(ty
     point a Retrieve Payment at the payment it claims — nothing else. */
 export function reducedRaw(event = {}, data = {}) {
   const keep = {};
-  for (const k of ['id', 'status', 'paid', 'amount', 'currency', 'currency_code', 'merchant_reference_id', 'customer']) {
+  for (const k of ['id', 'status', 'paid', 'amount', 'currency', 'currency_code', 'payout_currency', 'merchant_reference_id', 'customer']) {
     const v = scalar(data[k]);
     if (v !== undefined) keep[k] = v;
   }
@@ -225,7 +225,8 @@ export default async function handler(req, res) {
     status: f(data.status),
     paid: f(data.paid),
     amount: f(data.amount),
-    currency: f(data.currency_code || data.currency),
+    // payouts (PAYOUT_COMPLETED / PAYOUT_FAILED) carry payout_currency instead
+    currency: f(data.currency_code || data.currency || data.payout_currency),
     merchant_reference_id: ref,
     raw: trusted ? event : reducedRaw(event, data),
   };

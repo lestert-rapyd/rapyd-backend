@@ -4,7 +4,7 @@ import { beforeEach, afterEach } from 'node:test';
 // Every env var the backend reads. Cleared before each test so a developer's
 // shell/.env can't leak in — and, crucially, so no test ever holds real Rapyd
 // keys: proxy handlers then stop at MISSING_KEYS and never reach the network.
-const PREFIXES = ['RAPYD_', 'PAYBRIDGE_', 'LIVE_MAX_AMOUNT', 'ALLOWED_ORIGINS', 'WEBHOOK_', 'KV_', 'UPSTASH_'];
+const PREFIXES = ['RAPYD_', 'PAYBRIDGE_', 'LIVE_MAX_AMOUNT', 'LIVE_PAYOUTS_ENABLED', 'ALLOWED_ORIGINS', 'WEBHOOK_', 'KV_', 'UPSTASH_'];
 
 /** Call inside a describe(): snapshot process.env before each test, strip the
     backend's vars, and restore the exact snapshot afterwards. */
