@@ -5,6 +5,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 
+import cardEligibility from './handlers/payouts/card-eligibility.js';
 import createCheckoutSession from './api/create-checkout-session.js';
 import createCustomer from './api/create-customer.js';
 import createDirectPayment from './api/create-direct-payment.js';
@@ -42,6 +43,7 @@ app.use('/api/create-payout', createPayout);
 app.use('/api/create-refund', createRefund);
 app.use('/api/get-fx-rate', getFxRate);
 app.use('/api/list-customer-payment-methods', listCustomerPaymentMethods);
+app.use('/api/payout-card-eligibility', cardEligibility);
 app.use('/api/payout-method-types', payoutMethodTypes);
 app.use('/api/payout-required-fields', payoutRequiredFields);
 app.use('/api/retrieve-customer', retrieveCustomer);

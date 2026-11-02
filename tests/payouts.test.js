@@ -7,8 +7,9 @@ import createPayout from '../handlers/payouts/create-payout.js';
 import retrievePayout from '../handlers/payouts/retrieve-payout.js';
 import payoutRequiredFields from '../handlers/payouts/payout-required-fields.js';
 import payoutMethodTypes from '../handlers/payouts/payout-method-types.js';
+import cardEligibility from '../handlers/payouts/card-eligibility.js';
 import payouts from '../api/payouts.js';
-import { payoutBodyProblem, requiredFieldsPath, methodTypesPath, assertPayoutsAllowed } from '../utils/payouts.js';
+import { payoutBodyProblem, requiredFieldsPath, methodTypesPath, assertPayoutsAllowed, eligibilityBodyProblem } from '../utils/payouts.js';
 import { liveGuardError, hasRawCard, livePayoutsEnabled, LIVE_ALLOWED_FIELDS } from '../utils/live-guards.js';
 import { useCleanEnv, fakeReq, fakeRes, LIVE_TOKEN } from './_helpers.js';
 
@@ -126,6 +127,7 @@ describe('live payouts — disabled by default', () => {
       [retrievePayout, { headers: live, query: { id: 'payout_abc', env: 'live' } }],
       [payoutRequiredFields, { headers: live, query: { ...reqFieldsQuery(), env: 'live' } }],
       [payoutMethodTypes, { headers: live, query: { category: 'card', env: 'live' } }],
+      [cardEligibility, { method: 'POST', headers: live, body: { env: 'live', card_id: 'card_abc', transaction_type: 'oct' } }],
     ];
     for (const [h, init] of calls) {
       const res = await run(h, init);
@@ -172,7 +174,7 @@ describe('payout handlers — sandbox', () => {
   useCleanEnv();
 
   test('preflight + method checks', async () => {
-    for (const [h, wrong] of [[createPayout, 'GET'], [retrievePayout, 'POST'], [payoutRequiredFields, 'POST'], [payoutMethodTypes, 'POST']]) {
+    for (const [h, wrong] of [[createPayout, 'GET'], [retrievePayout, 'POST'], [payoutRequiredFields, 'POST'], [payoutMethodTypes, 'POST'], [cardEligibility, 'GET']]) {
       const pre = await run(h, { method: 'OPTIONS' });
       assert.equal(pre.statusCode, 204);
       assert.equal(pre.headers['access-control-allow-headers'], 'Content-Type, X-PayBridge-Live-Token, Idempotency-Key');
@@ -246,9 +248,76 @@ describe('api/payouts.js dispatcher (vercel.json rewrites land here)', () => {
       assert.equal(res.body.error, 'UNKNOWN_OPERATION');
     }
   });
+  test('op=card_eligibility routes to the eligibility handler (validates its body)', async () => {
+    const res = await run(payouts, { method: 'POST', query: { op: 'card_eligibility' }, body: { card_id: 'card_abc' } });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.error, 'INVALID_TRANSACTION_TYPE');
+    const wrong = await run(payouts, { method: 'GET', query: { op: 'card_eligibility' } });
+    assert.equal(wrong.statusCode, 405);
+  });
   test('op routes to the matching handler (retrieve validates its id)', async () => {
     const res = await run(payouts, { method: 'GET', query: { op: 'retrieve', id: 'not-a-payout' } });
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.error, 'INVALID_ID');
+  });
+});
+
+/* Retrieve Card Eligibility — POST /v1/cards/eligibility
+   (docs.rapyd.net/en/retrieve-card-eligibility-details.html). */
+describe('card eligibility', () => {
+  useCleanEnv();
+  const tokenElig = () => ({ card_id: 'card_abc', transaction_type: 'oct' });
+  const post = (body, headers = {}) => run(cardEligibility, { method: 'POST', headers, body });
+
+  test('eligibilityBodyProblem: exactly one card, documented transaction types, closed body', () => {
+    assert.equal(eligibilityBodyProblem(tokenElig()), null);
+    assert.equal(eligibilityBodyProblem({ card_number: '4111111111111111', transaction_type: 'all' }), null);
+    assert.equal(eligibilityBodyProblem({ card_number: '4'.repeat(19), transaction_type: 'aft' }), null);
+    assert.equal(eligibilityBodyProblem({ transaction_type: 'oct' }).error, 'INVALID_CARD');
+    assert.equal(eligibilityBodyProblem({ ...tokenElig(), card_number: '4111111111111111' }).error, 'INVALID_CARD');
+    for (const bad of ['payment_abc', 'card_', 'card_a-b', 42]) {
+      assert.equal(eligibilityBodyProblem({ card_id: bad, transaction_type: 'oct' }).error, 'INVALID_CARD', String(bad));
+    }
+    for (const bad of ['411111111111111', '4'.repeat(20), '4111 1111 1111 1111', 4111111111111111]) {
+      assert.equal(eligibilityBodyProblem({ card_number: bad, transaction_type: 'oct' }).error, 'INVALID_CARD', String(bad));
+    }
+    for (const bad of [undefined, 'OCT', 'payout', '']) {
+      assert.equal(eligibilityBodyProblem({ card_id: 'card_abc', transaction_type: bad }).error, 'INVALID_TRANSACTION_TYPE', String(bad));
+    }
+    assert.equal(eligibilityBodyProblem({ ...tokenElig(), amount: '1' }).error, 'INVALID_BODY');
+    assert.equal(eligibilityBodyProblem([]).error, 'INVALID_BODY');
+  });
+
+  test('sandbox: malformed 400 before keys; token and raw test card both reach MISSING_KEYS', async () => {
+    assert.equal((await post({ card_id: 'card_abc' })).body.error, 'INVALID_TRANSACTION_TYPE');
+    assert.equal((await post({ profile: 'SC9', ...tokenElig() })).body.error, 'UNKNOWN_PROFILE');
+    const tok = await post({ profile: 'SC2', ...tokenElig() });
+    assert.equal(tok.statusCode, 500);
+    assert.equal(tok.body.error, 'MISSING_KEYS');
+    const raw = await post({ card_number: '4111111111111111', transaction_type: 'oct' });
+    assert.equal(raw.body.error, 'MISSING_KEYS', 'the raw test card is a sandbox shape');
+  });
+
+  test('live: off without LIVE_PAYOUTS_ENABLED; then gate, raw-card and allowlist guards', async () => {
+    process.env.PAYBRIDGE_LIVE_TOKEN = LIVE_TOKEN;
+    const off = await post({ env: 'live', ...tokenElig() }, live);
+    assert.equal(off.statusCode, 403);
+    assert.equal(off.body.error, 'LIVE_PAYOUTS_DISABLED');
+
+    process.env.LIVE_PAYOUTS_ENABLED = 'true';
+    assert.equal((await post({ env: 'live', ...tokenElig() }, { 'x-paybridge-live-token': 'nope' })).statusCode, 401);
+    const raw = await post({ env: 'live', card_number: '4111111111111111', transaction_type: 'oct' }, live);
+    assert.equal(raw.body.error, 'LIVE_RAW_CARD_FORBIDDEN');
+    const extra = await post({ env: 'live', ...tokenElig(), ewallet: 'ewallet_x' }, live);
+    assert.equal(extra.body.error, 'LIVE_FIELD_NOT_ALLOWED');
+    const ok = await post({ env: 'live', ...tokenElig() }, live);
+    assert.equal(ok.statusCode, 500);
+    assert.equal(ok.body.error, 'MISSING_KEYS');
+  });
+
+  test('live allowlist: card_id + transaction_type, never card_number; not amount-capped', () => {
+    assert.deepEqual(LIVE_ALLOWED_FIELDS['card-eligibility'], ['card_id', 'transaction_type']);
+    assert.equal(liveGuardError('card-eligibility', tokenElig()), null);
+    assert.equal(liveGuardError('card-eligibility', { card_number: '4111111111111111', transaction_type: 'oct' }).error, 'LIVE_RAW_CARD_FORBIDDEN');
   });
 });
