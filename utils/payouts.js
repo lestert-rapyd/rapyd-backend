@@ -1,6 +1,6 @@
 /* ── Payout helpers ────────────────────────────────────────────
-   Shared by the four payout proxies (create-payout, retrieve-payout,
-   payout-required-fields, payout-method-types). Pure apart from reading
+   Shared by the five payout proxies (create-payout, retrieve-payout,
+   payout-required-fields, payout-method-types, card-eligibility). Pure apart from reading
    LIVE_PAYOUTS_ENABLED, so tests/payouts.test.js exercises them directly.
 
    Rapyd references (field names confirmed on these pages):
@@ -9,6 +9,8 @@
      Get Payout Required Fields    https://docs.rapyd.net/en/get-payout-required-fields.html
      List Payout Method Types      https://docs.rapyd.net/en/list-payout-method-types.html
      Card payouts (guide)          https://docs.rapyd.net/en/card-payout.html
+     Retrieve Card Eligibility     https://docs.rapyd.net/en/retrieve-card-eligibility-details.html
+     Card eligibility (guide)      https://docs.rapyd.net/en/card-eligibility-for-card-payouts.html
    ───────────────────────────────────────────────────────────── */
 
 import { HttpError } from './http.js';
@@ -88,6 +90,41 @@ export function payoutBodyProblem(b = {}) {
   }
   if (b.confirm_automatically !== undefined && typeof b.confirm_automatically !== 'boolean') {
     return { error: 'INVALID_BODY', message: 'confirm_automatically must be a boolean.' };
+  }
+  return null;
+}
+
+/* ── Card eligibility ─────────────────────────────────────
+   POST /v1/cards/eligibility (Retrieve Card Eligibility Details): exactly
+   one of card_number (16–19 digits) or card_id (card_***), plus
+   transaction_type — oct (payouts to the card), aft, or all. The response's
+   data.issuer_country / data.billing_currency drive the payout's
+   beneficiary_country / payout_currency (paybridge js/site/wallet.js). */
+export const ELIGIBILITY_TRANSACTION_TYPES = ['oct', 'aft', 'all'];
+export const CARD_ID = /^card_[A-Za-z0-9]+$/;
+export const CARD_NUMBER = /^\d{16,19}$/;
+const ELIGIBILITY_FIELDS = ['card_number', 'card_id', 'transaction_type'];
+
+/**
+ * Shape check for a Retrieve Card Eligibility body (already cleaned of
+ * env/profile). Closed: nothing beyond the three documented fields reaches
+ * Rapyd. Raw card_number is a sandbox-only shape — live refuses it earlier
+ * (assertLive → hasRawCard). null = OK, else { error, message }.
+ */
+export function eligibilityBodyProblem(b = {}) {
+  if (!isPlainObject(b)) return { error: 'INVALID_BODY', message: 'Request body must be a JSON object.' };
+  const extra = Object.keys(b).filter((k) => !ELIGIBILITY_FIELDS.includes(k));
+  if (extra.length) return { error: 'INVALID_BODY', message: `Unexpected field(s): ${extra.slice(0, 5).map((k) => k.slice(0, 32)).join(', ')}` };
+  const hasId = b.card_id !== undefined, hasNumber = b.card_number !== undefined;
+  if (hasId === hasNumber) return { error: 'INVALID_CARD', message: 'Send exactly one of card_id or card_number.' };
+  if (hasId && (typeof b.card_id !== 'string' || !CARD_ID.test(b.card_id))) {
+    return { error: 'INVALID_CARD', message: 'card_id must be a card_*** id.' };
+  }
+  if (hasNumber && (typeof b.card_number !== 'string' || !CARD_NUMBER.test(b.card_number))) {
+    return { error: 'INVALID_CARD', message: 'card_number must be 16–19 digits.' };
+  }
+  if (!ELIGIBILITY_TRANSACTION_TYPES.includes(b.transaction_type)) {
+    return { error: 'INVALID_TRANSACTION_TYPE', message: 'transaction_type must be oct, aft or all.' };
   }
   return null;
 }

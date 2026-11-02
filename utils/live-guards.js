@@ -60,6 +60,10 @@ export const LIVE_ALLOWED_FIELDS = {
     'sender_entity_type', 'beneficiary_country', 'beneficiary_entity_type', 'beneficiary', 'sender',
     'merchant_reference_id', 'description', 'statement_descriptor', 'confirm_automatically',
   ],
+  // paybridge/js/site/wallet.js eligibilityBody. card_id only — a raw
+  // card_number is refused by hasRawCard() before the allowlist is read.
+  // No amount: the call moves no money (and is not capped).
+  'card-eligibility': ['card_id', 'transaction_type'],
 };
 
 /* Which body field carries the capped amount, per endpoint. */
