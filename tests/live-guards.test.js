@@ -84,6 +84,12 @@ describe('hasRawCard', () => {
     assert.equal(hasRawCard({ address: [{ number: '4111', cvv: '1' }] }), true);
     assert.equal(hasRawCard({ customer: { payment_method: { fields: { number: '4111' } } } }), true);
   });
+  test('detects a decrypted Apple Pay / Google Pay PAN (the DPAN is a card number)', () => {
+    const wallet = (type, details) => ({ payment_method: { type: 'gb_visa_card', digital_wallet: { type, details } } });
+    assert.equal(hasRawCard(wallet('apple_pay', { decrypted_data: { applicationPrimaryAccountNumber: '4111111111111111' } })), true);
+    assert.equal(hasRawCard(wallet('google_pay', { decrypted_data: { paymentMethodDetails: { pan: '4111111111111111' } } })), true);
+    assert.equal(hasRawCard(wallet('apple_pay', { token: { paymentData: { data: 'ZW5j' } } })), false, 'an encrypted token is not');
+  });
   test('tokens, addresses and client_details are not card data', () => {
     assert.equal(hasRawCard({ payment_method: 'card_abc' }), false);
     assert.equal(hasRawCard({ address: { name: 'J', line_1: '10 Downing Street', city: 'London', country: 'GB', zip: 'SW1A 2AA' } }), false);

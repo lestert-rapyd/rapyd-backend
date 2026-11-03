@@ -3,7 +3,7 @@
 // guards stops at 500 MISSING_KEYS — Rapyd is never contacted.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import createDirectPayment from '../api/create-direct-payment.js';
+import createDirectPayment, { withGatewayMerchantId } from '../api/create-direct-payment.js';
 import createRefund from '../api/create-refund.js';
 import createCustomer from '../api/create-customer.js';
 import createCheckoutSession from '../api/create-checkout-session.js';
@@ -119,5 +119,24 @@ describe('GET proxies', () => {
     const res = await run(listCustomerPaymentMethods, { query: { customer: 'cus_abc', profile: 'XX' } });
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.error, 'UNKNOWN_PROFILE');
+  });
+});
+
+describe('withGatewayMerchantId', () => {
+  const gd = (dd) => ({ amount: 1, payment_method: { type: 'gb_visa_card', digital_wallet: { type: 'google_pay', details: { decrypted_data: dd, brand_data: { cardNetwork: 'VISA' } } } } });
+  test('writes the access key into a Google Pay decrypted_data, without mutating the input', () => {
+    const body = gd({ gatewayMerchantId: 'RAPYD_ACCESS_KEY', messageId: 'm' });
+    const out = withGatewayMerchantId(body, 'rak_123');
+    assert.equal(out.payment_method.digital_wallet.details.decrypted_data.gatewayMerchantId, 'rak_123');
+    assert.equal(out.payment_method.digital_wallet.details.decrypted_data.messageId, 'm');
+    assert.deepEqual(out.payment_method.digital_wallet.details.brand_data, { cardNetwork: 'VISA' });
+    assert.equal(body.payment_method.digital_wallet.details.decrypted_data.gatewayMerchantId, 'RAPYD_ACCESS_KEY');
+  });
+  test('leaves everything else alone', () => {
+    const apple = { payment_method: { digital_wallet: { type: 'apple_pay', details: { decrypted_data: { applicationPrimaryAccountNumber: '4' } } } } };
+    const enc = { payment_method: { digital_wallet: { type: 'google_pay', details: { token: {} } } } };
+    for (const b of [apple, enc, { payment_method: 'card_abc' }, {}]) assert.equal(withGatewayMerchantId(b, 'rak_123'), b);
+    const g = gd({});
+    assert.equal(withGatewayMerchantId(g, ''), g, 'no key, no change');
   });
 });
