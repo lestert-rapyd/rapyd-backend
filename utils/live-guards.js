@@ -126,13 +126,16 @@ const MAX_DEPTH = 8; // Rapyd's card paths sit 2–3 levels deep; nothing legit 
 
 /** True when the value carries card-shaped data anywhere: an object with
     both `number` and `cvv`, any `fields` object with a `number`
-    (payment_method.fields.number — incl. the CVV-less NRID/vault shape), or
-    a payout beneficiary's `card_number` (Create Payout's raw-card shape). */
+    (payment_method.fields.number — incl. the CVV-less NRID/vault shape), a
+    payout beneficiary's `card_number` (Create Payout's raw-card shape), or a
+    DECRYPTED wallet token's PAN/DPAN — Apple Pay's
+    `applicationPrimaryAccountNumber`, Google Pay's paymentMethodDetails `pan`. */
 export function hasRawCard(node, depth = 0) {
   if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return false;
   if (Array.isArray(node)) return node.some((n) => hasRawCard(n, depth + 1));
   if (present(node.number) && present(node.cvv)) return true;
   if (present(node.card_number)) return true;
+  if (present(node.applicationPrimaryAccountNumber) || present(node.pan)) return true;
   const f = node.fields;
   if (f && typeof f === 'object' && present(f.number)) return true;
   return Object.values(node).some((v) => hasRawCard(v, depth + 1));
