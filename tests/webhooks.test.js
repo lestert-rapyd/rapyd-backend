@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { parseWebhookQuery, MAX_REFS, MAX_REF_LENGTH } from '../api/webhooks.js';
+import handler, { parseWebhookQuery, matchesScope, mergeEvents, MAX_REFS, MAX_REF_LENGTH } from '../api/webhooks.js';
 import { useCleanEnv, fakeReq, fakeRes } from './_helpers.js';
 
 describe('parseWebhookQuery', () => {
@@ -44,6 +44,29 @@ describe('parseWebhookQuery', () => {
     for (const bad of ['cus_', 'payment_1', 'cus_ab-c', 'cus_1*', ['cus_1']]) {
       assert.equal(parseWebhookQuery({ customer: bad }).body.error, 'INVALID_CUSTOMER', String(bad));
     }
+  });
+});
+
+describe('wh:recent fallback (older receiver)', () => {
+  const rec = (type, data, id = type) => ({ type, event_id: id, received_at: 1, raw: { data } });
+  test('a card read takes only events that ARE that card', () => {
+    const q = { mode: 'card', card: 'card_1' };
+    assert.equal(matchesScope(rec('CARD_ADDED_SUCCESSFULLY', { id: 'card_1' }), q), true);
+    assert.equal(matchesScope(rec('CARD_ADDED_SUCCESSFULLY', { id: 'card_2' }), q), false);
+    assert.equal(matchesScope(rec('PAYMENT_UPDATED', { id: 'payment_1', payment_method: 'card_1' }), q), false);
+    assert.equal(matchesScope({ type: 'X' }, q), false);
+  });
+  test('a customer read matches customer, customer_token or the customer itself', () => {
+    const q = { mode: 'customer', customer: 'cus_1' };
+    assert.equal(matchesScope(rec('PAYMENT_SUCCEEDED', { id: 'payment_1', customer_token: 'cus_1' }), q), true);
+    assert.equal(matchesScope(rec('PAYMENT_SUCCEEDED', { id: 'payment_1', customer: 'cus_1' }), q), true);
+    assert.equal(matchesScope(rec('CUSTOMER_CREATED', { id: 'cus_1' }), q), true);
+    assert.equal(matchesScope(rec('PAYMENT_SUCCEEDED', { id: 'payment_2', customer_token: 'cus_2' }), q), false);
+    assert.equal(matchesScope(rec('X', { id: 'cus_1' }), { mode: 'ref', ref: 'cus_1' }), false, 'never for a ref read');
+  });
+  test('merge: newest first, one copy per event id', () => {
+    const a = { event_id: 'wh_a', received_at: 1 }, b = { event_id: 'wh_b', received_at: 2 };
+    assert.deepEqual(mergeEvents([a], [b, a]).map((e) => e.event_id), ['wh_b', 'wh_a']);
   });
 });
 

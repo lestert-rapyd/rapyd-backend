@@ -51,6 +51,9 @@ Events are filed under every id they carry: `merchant_reference_id`, the
 `cus_***` (`data.customer`, or `data.customer_token` on payment events) and,
 for the card's own events (`CUSTOMER_PAYMENT_METHOD_CREATED`,
 `CARD_ADDED_SUCCESSFULLY` — no customer, no reference), the `card_***`.
+A customer or card read also searches `wh:recent` — the rolling list the older
+receiver (`main`) writes — for records about exactly that id, so the stitching
+works whichever deployment Rapyd posts to. Nothing else from that list is returned.
 
 Webhook events carry `verified: 'verified' | 'unverified' | 'skipped'` and
 `verified_env: 'sandbox' | 'live' | null` (which environment's key pair
