@@ -4,7 +4,7 @@
 // save-while-paying completes. Card objects carry id (card_***), type, last4,
 // expiration_month/year and network_reference_id.
 
-import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../utils/http.js';
+import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../../utils/http.js';
 
 const METHODS = ['GET'];
 
