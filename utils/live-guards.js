@@ -60,6 +60,15 @@ export const LIVE_ALLOWED_FIELDS = {
     'sender_entity_type', 'beneficiary_country', 'beneficiary_entity_type', 'beneficiary', 'sender',
     'merchant_reference_id', 'description', 'statement_descriptor', 'confirm_automatically',
   ],
+  // paybridge/js/site/add-card.js htpBody — the Hosted Tokenisation Page
+  // carries no card data and no amount. Deliberately NO allowlist for
+  // 'add-customer-payment-method': it carries a raw card (external-3DS add
+  // card), so live refuses it outright (fail closed).
+  'create-card-token-page': [
+    'customer', 'country', 'currency', 'language', 'cancel_url', 'complete_url',
+    'complete_payment_url', 'error_payment_url', 'page_expiration', 'card_fields',
+    'payment_method_type', 'billing_address_collect',
+  ],
   // paybridge/js/site/wallet.js eligibilityBody. card_id only — a raw
   // card_number is refused by hasRawCard() before the allowlist is read.
   // No amount: the call moves no money (and is not capped).

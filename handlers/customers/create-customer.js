@@ -6,7 +6,7 @@
 import {
   applyCors, methodNotAllowed, readJsonBody, resolveEnv, cleanBody, assertLive,
   idempotencyKey, rapydRequest, sendError,
-} from '../utils/http.js';
+} from '../../utils/http.js';
 
 const METHODS = ['POST'];
 

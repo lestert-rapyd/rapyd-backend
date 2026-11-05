@@ -7,15 +7,17 @@ import dotenv from 'dotenv';
 
 import cardEligibility from './handlers/payouts/card-eligibility.js';
 import createCheckoutSession from './api/create-checkout-session.js';
-import createCustomer from './api/create-customer.js';
+import addCustomerPaymentMethod from './handlers/customers/add-payment-method.js';
+import createCardTokenPage from './handlers/customers/card-token-page.js';
+import createCustomer from './handlers/customers/create-customer.js';
 import createDirectPayment from './api/create-direct-payment.js';
 import createPayout from './handlers/payouts/create-payout.js';
 import createRefund from './api/create-refund.js';
 import getFxRate from './api/get-fx-rate.js';
-import listCustomerPaymentMethods from './api/list-customer-payment-methods.js';
+import listCustomerPaymentMethods from './handlers/customers/list-customer-payment-methods.js';
 import payoutMethodTypes from './handlers/payouts/payout-method-types.js';
 import payoutRequiredFields from './handlers/payouts/payout-required-fields.js';
-import retrieveCustomer from './api/retrieve-customer.js';
+import retrieveCustomer from './handlers/customers/retrieve-customer.js';
 import retrievePayment from './api/retrieve-payment.js';
 import retrievePayout from './handlers/payouts/retrieve-payout.js';
 import webhook, { MAX_WEBHOOK_BYTES } from './api/webhook.js';
@@ -36,6 +38,8 @@ app.use('/api/webhook', express.raw({ type: '*/*', limit: MAX_WEBHOOK_BYTES }), 
 });
 app.use(express.json());
 
+app.use('/api/add-customer-payment-method', addCustomerPaymentMethod);
+app.use('/api/create-card-token-page', createCardTokenPage);
 app.use('/api/create-checkout-session', createCheckoutSession);
 app.use('/api/create-customer', createCustomer);
 app.use('/api/create-direct-payment', createDirectPayment);

@@ -3,7 +3,7 @@
 // view, so the cus_*** created by beat 1 can be read back from Rapyd (live
 // payment_methods, created_at) instead of being narrated from session state.
 
-import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../utils/http.js';
+import { applyCors, methodNotAllowed, resolveEnv, assertLive, rapydRequest, sendError } from '../../utils/http.js';
 
 const METHODS = ['GET'];
 

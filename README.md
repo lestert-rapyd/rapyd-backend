@@ -17,6 +17,8 @@ forward it to Rapyd. Deployed as Vercel serverless functions (`api/*.js`);
 | GET | `/api/retrieve-payment?id=payment_…` | `GET /v1/payments/{id}` |
 | GET | `/api/retrieve-customer?id=cus_…` | `GET /v1/customers/{id}` |
 | GET | `/api/list-customer-payment-methods?customer=cus_…` | `GET /v1/customers/{id}/payment_methods?category=card` |
+| POST | `/api/add-customer-payment-method` | `POST /v1/customers/{id}/payment_methods` (add a card with external 3DS — sandbox only) |
+| POST | `/api/create-card-token-page` | `POST /v1/hosted/collect/card` (Hosted Tokenisation Page — add a card, no card data at the merchant) |
 | GET | `/api/get-fx-rate?buy_currency=…&sell_currency=…` | `GET /v1/fx_rates` |
 | POST | `/api/create-payout` | `POST /v1/payouts` (merchant-site Withdraw — a card payout) |
 | GET | `/api/retrieve-payout?id=payout_…` | `GET /v1/payouts/{id}` |
@@ -27,6 +29,8 @@ forward it to Rapyd. Deployed as Vercel serverless functions (`api/*.js`);
 The five payout routes are one Vercel function: `vercel.json` rewrites them onto
 `api/payouts.js?op=…`, which dispatches to `handlers/payouts/*.js` (the Hobby
 plan allows 12 functions per deployment, and every file under `api/` is one).
+The five customer routes are one function the same way: `api/customers.js?op=…`
+dispatches to `handlers/customers/*.js`.
 `server.js` mounts the handlers directly, so local runs need no rewrite.
 | POST | `/api/webhook` | Rapyd → us: verifies the signature, files the event in KV |
 | GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` | stored events; no parameter → `400 MISSING_REF` |

@@ -5,11 +5,14 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import createDirectPayment, { withGatewayMerchantId } from '../api/create-direct-payment.js';
 import createRefund from '../api/create-refund.js';
-import createCustomer from '../api/create-customer.js';
+import createCustomer from '../handlers/customers/create-customer.js';
 import createCheckoutSession from '../api/create-checkout-session.js';
 import retrievePayment from '../api/retrieve-payment.js';
-import retrieveCustomer from '../api/retrieve-customer.js';
-import listCustomerPaymentMethods from '../api/list-customer-payment-methods.js';
+import retrieveCustomer from '../handlers/customers/retrieve-customer.js';
+import listCustomerPaymentMethods from '../handlers/customers/list-customer-payment-methods.js';
+import addCustomerPaymentMethod from '../handlers/customers/add-payment-method.js';
+import createCardTokenPage from '../handlers/customers/card-token-page.js';
+import customersApi from '../api/customers.js';
 import getFxRate from '../api/get-fx-rate.js';
 import { useCleanEnv, fakeReq, fakeRes, LIVE_TOKEN } from './_helpers.js';
 
@@ -22,7 +25,7 @@ const live = { 'x-paybridge-live-token': LIVE_TOKEN };
 
 describe('POST proxies', () => {
   useCleanEnv();
-  const posts = [createDirectPayment, createRefund, createCustomer, createCheckoutSession];
+  const posts = [createDirectPayment, createRefund, createCustomer, createCheckoutSession, addCustomerPaymentMethod, createCardTokenPage];
 
   test('preflight 204 with the contract headers; wrong method 405', async () => {
     for (const h of posts) {
@@ -86,6 +89,33 @@ describe('POST proxies', () => {
     assert.equal(res.statusCode, 500);
     assert.equal(res.body.error, 'MISSING_KEYS');
     assert.equal(res.headers['access-control-allow-origin'], '*', 'CORS on error paths too');
+  });
+
+  test('add-customer-payment-method: customer id required; refused in live (raw card, no allowlist)', async () => {
+    const bad = await run(addCustomerPaymentMethod, { method: 'POST', body: { customer: 'nope', type: 'gb_visa_card' } });
+    assert.equal(bad.statusCode, 400);
+    assert.equal(bad.body.error, 'INVALID_ID');
+    process.env.PAYBRIDGE_LIVE_TOKEN = LIVE_TOKEN;
+    const lv = await run(addCustomerPaymentMethod, { method: 'POST', headers: live, body: {
+      env: 'live', customer: 'cus_abc', type: 'gb_visa_card', fields: { number: '4111111111111111', cvv: '123' },
+    } });
+    assert.equal(lv.statusCode, 400);
+    assert.equal(lv.body.error, 'LIVE_RAW_CARD_FORBIDDEN');
+  });
+
+  test('create-card-token-page: allowlisted in live, stops at MISSING_KEYS', async () => {
+    process.env.PAYBRIDGE_LIVE_TOKEN = LIVE_TOKEN;
+    const ok = await run(createCardTokenPage, { method: 'POST', headers: live, body: {
+      env: 'live', customer: 'cus_abc', country: 'GB', card_fields: { recurrence_type: 'unscheduled' },
+    } });
+    assert.equal(ok.body.error, 'MISSING_KEYS');
+    const extra = await run(createCardTokenPage, { method: 'POST', headers: live, body: { env: 'live', customer: 'cus_abc', metadata: {} } });
+    assert.equal(extra.body.error, 'LIVE_FIELD_NOT_ALLOWED');
+  });
+
+  test('api/customers dispatches by op; unknown op → 404', async () => {
+    assert.equal((await run(customersApi, { method: 'POST', query: { op: 'nope' } })).statusCode, 404);
+    assert.equal((await run(customersApi, { query: { op: 'retrieve', id: 'nope' } })).statusCode, 400);
   });
 
   test('non-object body → 400 INVALID_BODY', async () => {
