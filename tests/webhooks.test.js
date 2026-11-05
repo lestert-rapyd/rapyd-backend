@@ -4,7 +4,8 @@ import handler, { parseWebhookQuery, MAX_REFS, MAX_REF_LENGTH } from '../api/web
 import { useCleanEnv, fakeReq, fakeRes } from './_helpers.js';
 
 describe('parseWebhookQuery', () => {
-  test('ref / refs / customer modes', () => {
+  test('ref / refs / customer / card modes', () => {
+    assert.deepEqual(parseWebhookQuery({ card: 'card_ABC123' }), { mode: 'card', card: 'card_ABC123' });
     assert.deepEqual(parseWebhookQuery({ ref: 'pb_ecommerce_1' }), { mode: 'ref', ref: 'pb_ecommerce_1' });
     assert.deepEqual(parseWebhookQuery({ refs: ' a , b ,,a' }), { mode: 'refs', refs: ['a', 'b'] });
     assert.deepEqual(parseWebhookQuery({ customer: 'cus_ABC123' }), { mode: 'customer', customer: 'cus_ABC123' });
@@ -15,7 +16,7 @@ describe('parseWebhookQuery', () => {
   });
 
   test('no scope → 400 MISSING_REF (no global list any more)', () => {
-    for (const q of [{}, undefined, { ref: '' }, { refs: '' }, { customer: '' }]) {
+    for (const q of [{}, undefined, { ref: '' }, { refs: '' }, { customer: '' }, { card: '' }]) {
       const r = parseWebhookQuery(q);
       assert.equal(r.status, 400);
       assert.equal(r.body.error, 'MISSING_REF');
@@ -35,6 +36,10 @@ describe('parseWebhookQuery', () => {
     assert.equal(parseWebhookQuery({ ref: 'x'.repeat(MAX_REF_LENGTH + 1) }).body.error, 'INVALID_REF');
     assert.equal(parseWebhookQuery({ ref: 'x'.repeat(MAX_REF_LENGTH) }).mode, 'ref');
     assert.equal(parseWebhookQuery({ ref: 'cus:cus_1' }).body.error, 'INVALID_REF');
+    assert.equal(parseWebhookQuery({ ref: 'card:card_1' }).body.error, 'INVALID_REF');
+    for (const bad of ['card_', 'cus_1', 'card_a-b', ['card_1']]) {
+      assert.equal(parseWebhookQuery({ card: bad }).body.error, 'INVALID_CARD', String(bad));
+    }
     assert.equal(parseWebhookQuery({ ref: ['a'] }).body.error, 'INVALID_REF');
     for (const bad of ['cus_', 'payment_1', 'cus_ab-c', 'cus_1*', ['cus_1']]) {
       assert.equal(parseWebhookQuery({ customer: bad }).body.error, 'INVALID_CUSTOMER', String(bad));

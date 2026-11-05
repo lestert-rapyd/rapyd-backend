@@ -1,8 +1,10 @@
 // POST /api/webhook
 // Rapyd webhook receiver. Verifies the signature against every configured
-// MID, files the event in KV under its merchant_reference_id (and its cus_***
-// for CUSTOMER_* / card-on-file events), and returns 200 so Rapyd marks it
-// delivered. The demo frontend reads these via GET /api/webhooks.
+// MID, files the event in KV under its merchant_reference_id, its cus_***
+// (CUSTOMER_* events, and payments — which name the shopper in
+// customer_token) and its card_*** (CUSTOMER_PAYMENT_METHOD_CREATED /
+// CARD_ADDED_SUCCESSFULLY, which carry neither of the others), and returns
+// 200 so Rapyd marks it delivered. The demo frontend reads these via GET /api/webhooks.
 //
 // `verified` is computed HERE only — the frontend must treat anything but
 // 'verified' as untrusted (it re-confirms via Retrieve Payment). With
@@ -37,6 +39,7 @@ const UNVERIFIED_LIST_MAX = 20;
 const UNVERIFIED_TTL_SECONDS = 600;
 const UNVERIFIED_STR_MAX = 128; // clip every string kept from an unverified body
 const CUS_ID = /^cus_[A-Za-z0-9]+$/;
+const CARD_ID = /^card_[A-Za-z0-9]+$/;
 
 class TooLarge extends Error {}
 
@@ -142,7 +145,10 @@ const scalar = (v) => (v === null || ['string', 'number', 'boolean'].includes(ty
     point a Retrieve Payment at the payment it claims — nothing else. */
 export function reducedRaw(event = {}, data = {}) {
   const keep = {};
-  for (const k of ['id', 'status', 'paid', 'amount', 'currency', 'currency_code', 'payout_currency', 'merchant_reference_id', 'customer']) {
+  // + the ids that link an event to a card run (customer_token, payment_method)
+  // and the card's own non-sensitive labels.
+  for (const k of ['id', 'status', 'paid', 'amount', 'currency', 'currency_code', 'payout_currency', 'merchant_reference_id', 'customer',
+    'customer_token', 'payment_method', 'payment_method_type', 'next_action', 'type', 'last4', 'payment_account_reference']) {
     const v = scalar(data[k]);
     if (v !== undefined) keep[k] = v;
   }
@@ -163,12 +169,22 @@ const header = (req, name) => {
   return typeof v === 'string' ? v : undefined;
 };
 
-/** The cus_*** an event belongs to: data.customer (payment / card events),
-    else data.id when the event IS a customer object (CUSTOMER_CREATED …). */
+/** The cus_*** an event belongs to: data.customer, else data.customer_token
+    (payment events name the shopper there — Rapyd checked 2026-11-05), else
+    data.id when the event IS a customer object (CUSTOMER_CREATED …). */
 export function customerIdOf(data = {}) {
-  if (typeof data.customer === 'string' && CUS_ID.test(data.customer)) return data.customer;
+  for (const v of [data.customer, data.customer_token]) {
+    if (typeof v === 'string' && CUS_ID.test(v)) return v;
+  }
   if (typeof data.id === 'string' && CUS_ID.test(data.id)) return data.id;
   return null;
+}
+
+/** The card_*** an event IS (CUSTOMER_PAYMENT_METHOD_CREATED,
+    CARD_ADDED_SUCCESSFULLY): those carry no cus_*** and no
+    merchant_reference_id, so the card id is the only way to find them. */
+export function cardIdOf(data = {}) {
+  return typeof data.id === 'string' && CARD_ID.test(data.id) ? data.id : null;
 }
 
 async function pushCapped(key, value, max = LIST_MAX, ttl = LIST_TTL_SECONDS) {
@@ -208,10 +224,11 @@ export default async function handler(req, res) {
 
   const data = event.data && typeof event.data === 'object' ? event.data : {};
   const refRaw = data.merchant_reference_id || event.merchant_reference_id;
-  // 'cus:' prefixed refs would alias the wh:cus:<id> customer lists — refuse them.
-  const ref = typeof refRaw === 'string' && refRaw && refRaw.length <= MAX_REF_LENGTH && !refRaw.startsWith('cus:')
+  // 'cus:' / 'card:' prefixed refs would alias the customer / card lists — refuse them.
+  const ref = typeof refRaw === 'string' && refRaw && refRaw.length <= MAX_REF_LENGTH && !/^(cus|card):/.test(refRaw)
     ? refRaw : 'unknown';
   const cusId = customerIdOf(data);
+  const cardId = cardIdOf(data);
 
   // Unverified: every field is clipped and `raw` is the reduced body.
   const f = trusted ? (v) => v : scalar;
@@ -244,12 +261,14 @@ export default async function handler(req, res) {
       const value = JSON.stringify(record);
       const writes = [];
       // 'whu:' can't collide with 'wh:<ref>' (3rd char differs), and a ref
-      // can't start with 'cus:', so whu:<ref> never aliases whu:cus:<id>.
+      // can't start with 'cus:' or 'card:', so whu:<ref> never aliases
+      // whu:cus:<id> or whu:card:<id>.
       const [ns, max, ttl] = trusted
         ? ['wh', LIST_MAX, LIST_TTL_SECONDS]
         : ['whu', UNVERIFIED_LIST_MAX, UNVERIFIED_TTL_SECONDS];
       if (ref !== 'unknown') writes.push(pushCapped(`${ns}:${ref}`, value, max, ttl));
       if (cusId) writes.push(pushCapped(`${ns}:cus:${cusId}`, value, max, ttl));
+      if (cardId) writes.push(pushCapped(`${ns}:card:${cardId}`, value, max, ttl));
       await Promise.all(writes);
       stored = writes.length > 0;
       // No global wh:recent list any more — it handed every visitor the last

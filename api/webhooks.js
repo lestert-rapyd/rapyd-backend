@@ -5,7 +5,11 @@
 //                                    poller; max 20 refs per call (extra
 //                                    dropped), one KV round-trip per ref
 //   ?customer=cus_xxx              → { events, configured }  CUSTOMER_* and
-//                                    card-on-file events filed by cus_***
+//                                    payment events filed by cus_***
+//                                    (data.customer / data.customer_token)
+//   ?card=card_xxx                 → { events, configured }  the card's own
+//                                    events (CUSTOMER_PAYMENT_METHOD_CREATED,
+//                                    CARD_ADDED_SUCCESSFULLY) — no cus_*** on them
 //
 // No scope → 400 MISSING_REF. There is deliberately no "recent events" read:
 // the old global list exposed every session's raw events (PII) to anyone.
@@ -22,17 +26,19 @@ const METHODS = ['GET'];
 export const MAX_REFS = 20;
 export const MAX_REF_LENGTH = 128;
 const CUS_ID = /^cus_[a-z0-9]+$/i;
-// 'cus:' is the customer-list namespace (wh:cus:<id>) — a ref can't alias it.
-const validRef = (r) => typeof r === 'string' && r.length > 0 && r.length <= MAX_REF_LENGTH && !r.startsWith('cus:');
+const CARD_ID = /^card_[a-z0-9]+$/i;
+// 'cus:' / 'card:' are the customer / card namespaces (wh:cus:<id>,
+// wh:card:<id>) — a ref can't alias them.
+const validRef = (r) => typeof r === 'string' && r.length > 0 && r.length <= MAX_REF_LENGTH && !/^(cus|card):/.test(r);
 
 /**
  * Pure query validation (unit-tested without KV).
  * @returns {{ mode: 'refs', refs: string[] } | { mode: 'ref', ref: string }
- *          | { mode: 'customer', customer: string }
+ *          | { mode: 'customer', customer: string } | { mode: 'card', card: string }
  *          | { status: number, body: { error: string, message: string } }}
  */
 export function parseWebhookQuery(query = {}) {
-  const { refs, ref, customer } = query || {};
+  const { refs, ref, customer, card } = query || {};
   if (refs !== undefined && refs !== '') {
     if (typeof refs !== 'string') return invalid('INVALID_REF', 'refs must be a single comma-separated list.');
     const list = refs.split(',').map((s) => s.trim())
@@ -42,14 +48,18 @@ export function parseWebhookQuery(query = {}) {
     return { mode: 'refs', refs: [...new Set(list)] };
   }
   if (ref !== undefined && ref !== '') {
-    if (!validRef(ref)) return invalid('INVALID_REF', `ref must be 1–${MAX_REF_LENGTH} chars and must not start with 'cus:'.`);
+    if (!validRef(ref)) return invalid('INVALID_REF', `ref must be 1–${MAX_REF_LENGTH} chars and must not start with 'cus:' or 'card:'.`);
     return { mode: 'ref', ref };
   }
   if (customer !== undefined && customer !== '') {
     if (typeof customer !== 'string' || !CUS_ID.test(customer)) return invalid('INVALID_CUSTOMER', 'customer must be a cus_*** id.');
     return { mode: 'customer', customer };
   }
-  return invalid('MISSING_REF', 'Pass ref, refs or customer.');
+  if (card !== undefined && card !== '') {
+    if (typeof card !== 'string' || !CARD_ID.test(card)) return invalid('INVALID_CARD', 'card must be a card_*** id.');
+    return { mode: 'card', card };
+  }
+  return invalid('MISSING_REF', 'Pass ref, refs, customer or card.');
 }
 
 function invalid(error, message) {
@@ -60,7 +70,7 @@ const parseAll = (items) => (items || [])
   .map((s) => { try { return JSON.parse(s); } catch { return null; } })
   .filter(Boolean);
 
-/** Verified + unverified events for one scope (`ref` or `cus:<id>`), newest first. */
+/** Verified + unverified events for one scope (`ref`, `cus:<id>` or `card:<id>`), newest first. */
 async function eventsAt(scope) {
   const [verified, unverified] = await Promise.all([
     kv(['LRANGE', `wh:${scope}`, '0', '-1']),
@@ -89,7 +99,7 @@ export default async function handler(req, res) {
       q.refs.forEach((r, i) => { byRef[r] = results[i]; });
       return res.status(200).json({ byRef, configured: true });
     }
-    const scope = q.mode === 'customer' ? `cus:${q.customer}` : q.ref;
+    const scope = q.mode === 'customer' ? `cus:${q.customer}` : q.mode === 'card' ? `card:${q.card}` : q.ref;
     return res.status(200).json({ events: await eventsAt(scope), configured: true });
   } catch (err) {
     console.error('webhooks read error:', err.message);

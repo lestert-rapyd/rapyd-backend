@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import handler, {
-  verifyWebhookSignature, verifyWebhook, reducedRaw, customerIdOf, readRawBody, MAX_WEBHOOK_BYTES,
+  verifyWebhookSignature, verifyWebhook, reducedRaw, customerIdOf, cardIdOf, readRawBody, MAX_WEBHOOK_BYTES,
 } from '../api/webhook.js';
 import { useCleanEnv, fakeReq, fakeRes } from './_helpers.js';
 
@@ -84,6 +84,17 @@ describe('reducedRaw (unverified events)', () => {
     assert.equal(r.reduced, true);
     assert.equal(r.extra, undefined);
   });
+  test('keeps the ids that link a card run — customer_token, payment_method, card labels', () => {
+    const r = reducedRaw(
+      { id: 'wh_2', type: 'CARD_ADDED_SUCCESSFULLY' },
+      { id: 'card_1', type: 'gb_visa_card', last4: '1111', payment_account_reference: 'V001', bin_details: { bin: '411111' }, fields: { number: '4111' } },
+    );
+    assert.deepEqual(Object.keys(r.data).sort(), ['id', 'last4', 'payment_account_reference', 'type']);
+    const p = reducedRaw({ id: 'wh_3', type: 'PAYMENT_UPDATED' }, { id: 'payment_1', customer_token: 'cus_1', payment_method: 'card_1', next_action: 'not_applicable' });
+    assert.equal(p.data.customer_token, 'cus_1');
+    assert.equal(p.data.payment_method, 'card_1');
+    assert.equal(p.data.next_action, 'not_applicable');
+  });
 });
 
 describe('customerIdOf', () => {
@@ -94,6 +105,20 @@ describe('customerIdOf', () => {
     assert.equal(customerIdOf({ customer: 'cus_x;DEL', id: 'card_1' }), null);
     assert.equal(customerIdOf({ customer: { id: 'cus_1' } }), null);
     assert.equal(customerIdOf(), null);
+  });
+  test('payments name the shopper in customer_token', () => {
+    assert.equal(customerIdOf({ id: 'payment_1', customer_token: 'cus_tok' }), 'cus_tok');
+    assert.equal(customerIdOf({ id: 'payment_1', customer: 'cus_a', customer_token: 'cus_b' }), 'cus_a');
+    assert.equal(customerIdOf({ id: 'payment_1', customer_token: 'cus_x;DEL' }), null);
+  });
+});
+
+describe('cardIdOf', () => {
+  test('only an event that IS a card (data.id card_***)', () => {
+    assert.equal(cardIdOf({ id: 'card_abc', type: 'gb_visa_card' }), 'card_abc');
+    assert.equal(cardIdOf({ id: 'payment_1', payment_method: 'card_abc' }), null);
+    assert.equal(cardIdOf({ id: 'card_x:y' }), null);
+    assert.equal(cardIdOf(), null);
   });
 });
 
