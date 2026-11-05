@@ -13,6 +13,8 @@
 //
 // No scope → 400 MISSING_REF. There is deliberately no "recent events" read:
 // the old global list exposed every session's raw events (PII) to anyone.
+// (wh:recent is only SEARCHED, for records about the one customer / card id
+// asked for — see LEGACY_RECENT.)
 // Each event carries `verified` (+ `verified_env`, the environment whose key
 // pair signed it) — consumers must treat anything but 'verified' as
 // untrusted. Each read merges the verified list (wh:<scope>) with the
@@ -70,14 +72,47 @@ const parseAll = (items) => (items || [])
   .map((s) => { try { return JSON.parse(s); } catch { return null; } })
   .filter(Boolean);
 
-/** Verified + unverified events for one scope (`ref`, `cus:<id>` or `card:<id>`), newest first. */
-async function eventsAt(scope) {
-  const [verified, unverified] = await Promise.all([
+/* The older receiver (rapyd-backend `main`, which Rapyd's sandbox MIDs post to
+   as of 2026-11-05) files events only under wh:<ref> plus a rolling
+   wh:recent list (last 100, 1 h) in this same store. A card's own events
+   (CUSTOMER_PAYMENT_METHOD_CREATED, CARD_ADDED_SUCCESSFULLY) carry no ref, and
+   payments name the shopper in customer_token — so for a customer or card
+   read, wh:recent is searched for records about EXACTLY that id. Nothing else
+   from wh:recent is ever returned (it holds every session's events). */
+const LEGACY_RECENT = 'wh:recent';
+
+/** Does a stored record belong to this customer / card scope? (pure) */
+export function matchesScope(record, q) {
+  const d = record?.raw?.data;
+  if (!d || typeof d !== 'object') return false;
+  if (q.mode === 'card') return d.id === q.card;
+  if (q.mode === 'customer') return d.customer === q.customer || d.customer_token === q.customer || d.id === q.customer;
+  return false;
+}
+
+/** Newest first, one copy per event id (the same event can sit in two lists). (pure) */
+export function mergeEvents(...lists) {
+  const seen = new Set();
+  return lists.flat()
+    .sort((a, b) => (Number(b.received_at) || 0) - (Number(a.received_at) || 0))
+    .filter((e) => {
+      const k = e.event_id || `${e.type}|${e.received_at}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+}
+
+/** Verified + unverified events for one scope (`ref`, `cus:<id>` or `card:<id>`),
+    plus — for customer / card reads — the matching wh:recent records. */
+async function eventsAt(scope, q = null) {
+  const legacy = q && (q.mode === 'customer' || q.mode === 'card');
+  const [verified, unverified, recent] = await Promise.all([
     kv(['LRANGE', `wh:${scope}`, '0', '-1']),
     kv(['LRANGE', `whu:${scope}`, '0', '-1']),
+    legacy ? kv(['LRANGE', LEGACY_RECENT, '0', '-1']).catch(() => []) : [],
   ]);
-  return [...parseAll(verified), ...parseAll(unverified)]
-    .sort((a, b) => (Number(b.received_at) || 0) - (Number(a.received_at) || 0));
+  return mergeEvents(parseAll(verified), parseAll(unverified), parseAll(recent).filter((r) => matchesScope(r, q)));
 }
 
 export default async function handler(req, res) {
@@ -100,7 +135,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ byRef, configured: true });
     }
     const scope = q.mode === 'customer' ? `cus:${q.customer}` : q.mode === 'card' ? `card:${q.card}` : q.ref;
-    return res.status(200).json({ events: await eventsAt(scope), configured: true });
+    return res.status(200).json({ events: await eventsAt(scope, q), configured: true });
   } catch (err) {
     console.error('webhooks read error:', err.message);
     return res.status(200).json(batch
