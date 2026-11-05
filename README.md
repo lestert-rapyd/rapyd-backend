@@ -33,7 +33,7 @@ The five customer routes are one function the same way: `api/customers.js?op=…
 dispatches to `handlers/customers/*.js`.
 `server.js` mounts the handlers directly, so local runs need no rewrite.
 | POST | `/api/webhook` | Rapyd → us: verifies the signature, files the event in KV |
-| GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` | stored events; no parameter → `400 MISSING_REF` |
+| GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` / `?card=card_…` | stored events; no parameter → `400 MISSING_REF` |
 
 Every proxy takes `env` (`sandbox` default, or `live`) and `profile`
 (`SC1` default, `SC2`, `SC3`; anything else → `400 UNKNOWN_PROFILE`) in the
@@ -46,6 +46,11 @@ otherwise a random key is generated) and `X-PayBridge-Live-Token` (live only).
 Errors are `{ error, message, hint?, raw? }`: Rapyd 4xx pass through with
 their status, Rapyd 5xx → 502, timeout (10 s) → 504, unreachable → 502,
 missing keys → 500. Successes are Rapyd's JSON unchanged.
+
+Events are filed under every id they carry: `merchant_reference_id`, the
+`cus_***` (`data.customer`, or `data.customer_token` on payment events) and,
+for the card's own events (`CUSTOMER_PAYMENT_METHOD_CREATED`,
+`CARD_ADDED_SUCCESSFULLY` — no customer, no reference), the `card_***`.
 
 Webhook events carry `verified: 'verified' | 'unverified' | 'skipped'` and
 `verified_env: 'sandbox' | 'live' | null` (which environment's key pair
