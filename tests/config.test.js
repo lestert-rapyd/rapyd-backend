@@ -97,9 +97,28 @@ describe('validateSlots', () => {
   for (const [name, slots] of Object.entries(bad)) {
     test(`rejects: ${name}`, () => assert.equal(validateSlots(slots).ok, false));
   }
+  test('accepts step-scoped slots (one card\'s own override)', () => {
+    const v = validateSlots({
+      'beat.header:pay': { entries: { 'request.sent': { label: 'sent to Rapyd', tone: 'info' } } },
+      'payment.result:pay-res': { rules: [{ id: 'a', label: '{data.status}', tone: 'success' }], fallback: { slot: 'http.status' } },
+      'http.status:fx': { rules: [{ id: 'h', label: 'HTTP {http.status}', tone: 'success' }] },
+    });
+    assert.equal(v.ok, true);
+    assert.deepEqual(Object.keys(v.slots), ['beat.header:pay', 'payment.result:pay-res', 'http.status:fx']);
+  });
+  test('rejects bad step ids, unknown bases, a step slot falling back to its own base', () => {
+    assert.equal(validateSlots({ 'beat.header:Pay Res': { entries: {} } }).ok, false);
+    assert.equal(validateSlots({ 'nope:pay': { entries: {} } }).ok, false);
+    assert.equal(validateSlots({ 'payment.result:pay-res': { rules: [], fallback: { slot: 'payment.result' } } }).ok, false);
+  });
+  test('rejects too many slots', () => {
+    const many = {};
+    for (let i = 0; i <= LIMITS.slots; i++) many[`beat.header:s${i}`] = { entries: {} };
+    assert.equal(validateSlots(many).ok, false);
+  });
   test('rejects an oversized body', () => {
     const entries = {};
-    for (let i = 0; i < 90; i++) entries[`k${i}`] = { label: 'x'.repeat(40), tone: 'success', pad: 'y'.repeat(400) };
+    for (let i = 0; i < 90; i++) entries[`k${i}`] = { label: 'x'.repeat(40), tone: 'success', pad: 'y'.repeat(Math.ceil(LIMITS.bytes / 90) + 10) };
     assert.equal(validateSlots({ 'beat.header': { entries } }).ok, false);
   });
   test('validateMeta trims, defaults the name, refuses control chars', () => {

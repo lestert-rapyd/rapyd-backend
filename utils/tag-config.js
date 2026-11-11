@@ -20,10 +20,17 @@ export const DICT_SLOTS = {
 };
 
 export const LIMITS = {
-  bytes: 32 * 1024, label: 40, rules: 30, conds: 10, inValues: 20, entries: 100, name: 40, note: 200,
+  slots: 150, bytes: 48 * 1024, label: 40, rules: 30, conds: 10, inValues: 20, entries: 100, name: 40, note: 200,
 };
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+// A slot id is a base slot, or `<base>:<step>` — that one engine-room card's
+// own override (step = the card id without `beat-`, e.g. `payment.result:pay-res`).
+const STEP_RE = /^[a-z0-9-]{1,40}$/;
+export function splitSlotId(id) {
+  const i = id.indexOf(':');
+  return i < 0 ? [id, null] : [id.slice(0, i), id.slice(i + 1)];
+}
 const KEY_RE = /^[a-z0-9._-]{1,40}$/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -129,11 +136,16 @@ export function validateSlots(slots) {
   let size;
   try { size = JSON.stringify(slots).length; } catch { return { ok: false, errors: ['slots is not serialisable'] }; }
   if (size > LIMITS.bytes) return { ok: false, errors: [`slots is larger than ${LIMITS.bytes} bytes`] };
+  const ids = Object.keys(slots);
+  if (ids.length > LIMITS.slots) return { ok: false, errors: [`more than ${LIMITS.slots} slots`] };
   const out = {};
-  for (const [id, s] of Object.entries(slots)) {
+  for (const id of ids) {
+    const s = slots[id];
+    const [base, step] = splitSlotId(id);
+    if (step !== null && !STEP_RE.test(step)) { errors.push(`slot "${id}": step must match ${STEP_RE}`); continue; }
     if (!isObj(s)) { errors.push(`${id} must be an object`); continue; }
-    if (RULE_SLOTS[id]) out[id] = checkRulesSlot(id, s, errors);
-    else if (DICT_SLOTS[id]) out[id] = checkDictSlot(id, s, errors);
+    if (RULE_SLOTS[base]) out[id] = checkRulesSlot(base, s, errors);
+    else if (DICT_SLOTS[base]) out[id] = checkDictSlot(base, s, errors);
     else errors.push(`unknown slot "${id}"`);
   }
   return errors.length ? { ok: false, errors: errors.slice(0, 50) } : { ok: true, slots: out };

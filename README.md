@@ -47,6 +47,9 @@ production share — a publish from either shows on both. Admin calls need
 `403 ADMIN_DISABLED`, wrong → `401 ADMIN_AUTH_REQUIRED`). The slot schema is
 validated in `utils/tag-config.js`, a mirror of the frontend's
 `js/tags/registry.js`.
+A slot id is a base slot (`beat.header`, `payment.result`, `http.status`) — the
+shared default — or `<base>:<step>`, one engine-room card's own override
+(`step` = the card id without `beat-`, e.g. `payment.result:pay-res`).
 
 Every proxy takes `env` (`sandbox` default, or `live`) and `profile`
 (`SC1` default, `SC2`, `SC3`; anything else → `400 UNKNOWN_PROFILE`) in the
