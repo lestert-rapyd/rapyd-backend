@@ -22,6 +22,7 @@ import retrievePayment from './api/retrieve-payment.js';
 import retrievePayout from './handlers/payouts/retrieve-payout.js';
 import webhook, { MAX_WEBHOOK_BYTES } from './api/webhook.js';
 import webhooks from './api/webhooks.js';
+import config from './api/config.js';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use('/api/retrieve-payment', retrievePayment);
 app.use('/api/retrieve-payout', retrievePayout);
 app.use('/api/webhook', webhook);
 app.use('/api/webhooks', webhooks);
+app.use('/api/config', config);
 
 app.get('/', (req, res) => {
   res.send('Rapyd backend is running.');
