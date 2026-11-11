@@ -31,7 +31,7 @@ describe('POST proxies', () => {
     for (const h of posts) {
       const pre = await run(h, { method: 'OPTIONS' });
       assert.equal(pre.statusCode, 204);
-      assert.equal(pre.headers['access-control-allow-headers'], 'Content-Type, X-PayBridge-Live-Token, Idempotency-Key');
+      assert.equal(pre.headers['access-control-allow-headers'], 'Content-Type, X-PayBridge-Live-Token, X-PayBridge-Admin-Token, Idempotency-Key');
       assert.equal((await run(h, { method: 'GET' })).statusCode, 405);
     }
   });

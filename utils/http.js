@@ -18,7 +18,7 @@ import { liveGate, liveGuardError } from './live-guards.js';
 export { liveGate } from './live-guards.js';
 
 export const RAPYD_TIMEOUT_MS = 10000;
-export const ALLOWED_HEADERS = 'Content-Type, X-PayBridge-Live-Token, Idempotency-Key';
+export const ALLOWED_HEADERS = 'Content-Type, X-PayBridge-Live-Token, X-PayBridge-Admin-Token, Idempotency-Key';
 const IDEMPOTENCY_RE = /^[A-Za-z0-9_.:-]{8,100}$/;
 const UNKNOWN_PROFILE_MSG = 'Unknown sandbox profile. Expected one of: SC1, SC2, SC3 (or omit it for SC1).';
 

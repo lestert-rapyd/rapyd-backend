@@ -177,7 +177,7 @@ describe('payout handlers — sandbox', () => {
     for (const [h, wrong] of [[createPayout, 'GET'], [retrievePayout, 'POST'], [payoutRequiredFields, 'POST'], [payoutMethodTypes, 'POST'], [cardEligibility, 'GET']]) {
       const pre = await run(h, { method: 'OPTIONS' });
       assert.equal(pre.statusCode, 204);
-      assert.equal(pre.headers['access-control-allow-headers'], 'Content-Type, X-PayBridge-Live-Token, Idempotency-Key');
+      assert.equal(pre.headers['access-control-allow-headers'], 'Content-Type, X-PayBridge-Live-Token, X-PayBridge-Admin-Token, Idempotency-Key');
       assert.equal((await run(h, { method: wrong })).statusCode, 405);
     }
   });

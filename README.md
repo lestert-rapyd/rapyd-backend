@@ -34,6 +34,19 @@ dispatches to `handlers/customers/*.js`.
 `server.js` mounts the handlers directly, so local runs need no rewrite.
 | POST | `/api/webhook` | Rapyd → us: verifies the signature, files the event in KV |
 | GET | `/api/webhooks?ref=…` / `?refs=a,b` (≤ 20) / `?customer=cus_…` / `?card=card_…` | stored events; no parameter → `400 MISSING_REF` |
+| GET | `/api/config?op=tags` | Tag Studio: the published engine-room tag config (public; `{version:0, slots:{}}` = code defaults) |
+| PUT | `/api/config?op=tags` | admin · publish `{ baseVersion, slots, updatedBy, note }`; stale `baseVersion` → `409 VERSION_CONFLICT` |
+| GET | `/api/config?op=tags-history` | admin · the last 20 versions (metadata) |
+| POST | `/api/config?op=tags-rollback` | admin · `{ version, baseVersion }` republishes an old version as a new one |
+| GET | `/api/config?op=whoami` | admin · `204` when `X-PayBridge-Admin-Token` is valid |
+
+`api/config.js` is one function for all five (10 of the 12 Hobby functions).
+The config lives in ONE Redis key, `cfg:tags:v1`, in the store staging and
+production share — a publish from either shows on both. Admin calls need
+`X-PayBridge-Admin-Token` = `PAYBRIDGE_ADMIN_TOKEN` (≥ 16 chars; unset →
+`403 ADMIN_DISABLED`, wrong → `401 ADMIN_AUTH_REQUIRED`). The slot schema is
+validated in `utils/tag-config.js`, a mirror of the frontend's
+`js/tags/registry.js`.
 
 Every proxy takes `env` (`sandbox` default, or `live`) and `profile`
 (`SC1` default, `SC2`, `SC3`; anything else → `400 UNKNOWN_PROFILE`) in the
@@ -41,7 +54,8 @@ POST body or GET query. Both are stripped before the body is signed and sent.
 
 Request headers: `Content-Type`, `Idempotency-Key` (8–100 of `A-Z a-z 0-9 _ . : -`;
 forwarded as Rapyd's `idempotency` header so a retry can't double-charge —
-otherwise a random key is generated) and `X-PayBridge-Live-Token` (live only).
+otherwise a random key is generated), `X-PayBridge-Live-Token` (live only) and
+`X-PayBridge-Admin-Token` (Tag Studio writes only).
 
 Errors are `{ error, message, hint?, raw? }`: Rapyd 4xx pass through with
 their status, Rapyd 5xx → 502, timeout (10 s) → 504, unreachable → 502,
@@ -69,6 +83,7 @@ forged POSTs can't evict verified ones; webhook bodies are capped at 64 KB.
 
 All environment variables are documented in [`.env.example`](.env.example):
 per-profile sandbox keys and wallets, live keys, `PAYBRIDGE_LIVE_TOKEN`,
+`PAYBRIDGE_ADMIN_TOKEN`,
 `LIVE_MAX_AMOUNT`, `ALLOWED_ORIGINS`, `WEBHOOK_REQUIRE_SIGNATURE`,
 `WEBHOOK_PUBLIC_URL`, the KV store and `PORT`. `./set-vercel-env.sh` pushes
 the ones present in `.env` to Vercel without printing values.
